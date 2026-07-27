@@ -86,14 +86,15 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
 
 /* Mobile */
 @media (max-width: 768px) {
-  .stats-grid { grid-template-columns:repeat(2,1fr) !important; gap:10px !important; }
+  .stats-grid { grid-template-columns:repeat(2,1fr) !important; gap:10px !important; margin-bottom:20px !important; }
   .stat-card { padding:14px 12px !important; gap:10px !important; }
   .stat-icon { width:36px !important; height:36px !important; font-size:16px !important; border-radius:8px !important; }
   .stat-value { font-size:18px !important; }
   .stat-label { font-size:9px !important; letter-spacing:0.5px !important; }
-  .today-card { flex-direction:column !important; align-items:stretch !important; padding:16px !important; gap:16px !important; }
+  .today-card { flex-direction:column !important; align-items:stretch !important; padding:16px !important; gap:16px !important; margin-bottom:20px !important; }
   .today-left { justify-content:center !important; }
-  .card { padding:16px !important; }
+  .card { padding:16px !important; margin-bottom:20px !important; }
+  .btn-submit { width:100% !important; justify-content:center !important; }
   tbody td { padding:10px 8px !important; font-size:12px !important; }
 }
 </style>
@@ -227,7 +228,7 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
 
   {% if not today_record %}
   <!-- Manual Attendance Entry Form -->
-  <div class="card" style="border:1.5px solid #99f6e4;">
+  <div class="card" style="border:1.5px solid #99f6e4; margin-bottom:24px;">
     <div class="card-title" style="color:var(--accent);">
       ✍️ Manual Attendance Entry
     </div>
@@ -653,7 +654,7 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
   });
 
   function cleanStr(s) {
-    return s ? s.replace(/\s+/g, '').toLowerCase() : '';
+    return s ? String(s).replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '';
   }
 
   function handlePOChange(selectEl) {
@@ -744,6 +745,7 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
     const manualLon = document.getElementById('manual_lon');
 
     const zoneCol = zoneSelect ? zoneSelect.closest('div') : null;
+    const zoneWrapper = zoneCol;
     const poCol = poSelect ? poSelect.closest('div') : null;
     const rpCol = rpInput ? rpInput.closest('div') : null;
 
@@ -818,10 +820,10 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
       return;
     }
 
-    const locObj = masterLocations.find(l => l.name === val);
+    const locObj = masterLocations.find(l => cleanStr(l.name) === cleanStr(val));
     
     // Toggle manual coords inputs based on whether location has GPS coordinates
-    const hasCoords = locObj && locObj.latitude && locObj.longitude;
+    const hasCoords = locObj && locObj.latitude != null && locObj.longitude != null && locObj.latitude !== '' && locObj.longitude !== '';
     if (!hasCoords && val !== '') {
       coordsContainer.style.display = 'block';
       manualLat.required = true;
@@ -843,8 +845,8 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
     
     if (locHasZones || poHasZones) {
       // Show and require Zone selection
-      zoneWrapper.style.display = 'block';
-      zoneSelect.required = true;
+      if (zoneWrapper) zoneWrapper.style.display = 'block';
+      if (zoneSelect) zoneSelect.required = true;
       
       // Get unique zones
       const zones = new Set();
@@ -861,15 +863,17 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
         const opt = document.createElement('option');
         opt.value = z;
         opt.textContent = z;
-        zoneSelect.appendChild(opt);
+        if (zoneSelect) zoneSelect.appendChild(opt);
       });
       
-      poSelect.innerHTML = '<option value="" disabled selected>— Choose Zone First —</option>';
+      if (poSelect) poSelect.innerHTML = '<option value="" disabled selected>— Choose Zone First —</option>';
     } else {
       // Hide and make Zone optional
-      zoneWrapper.style.display = 'none';
-      zoneSelect.required = false;
-      zoneSelect.innerHTML = '<option value="" selected></option>'; // set dummy selected value
+      if (zoneWrapper) zoneWrapper.style.display = 'none';
+      if (zoneSelect) {
+        zoneSelect.required = false;
+        zoneSelect.innerHTML = '<option value="" selected></option>'; // set dummy selected value
+      }
 
       // Populate POs directly!
       if (locationPOs.length === 0) {

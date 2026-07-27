@@ -14,7 +14,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from sheets_db import db, configure_app, pull_from_sheets, Employee, Attendance, Location, PO
+from sheets_db import db, configure_app, pull_from_sheets, Employee, Attendance, Location, PO, parse_coordinate_str
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'attendance_secret_key_2024')
@@ -319,26 +319,25 @@ def my_attendance():
                         user_lon = request.form.get('user_lon')
                         if not loc.latitude or not loc.longitude:
                             # Coordinates not set yet: register them from the user's manual entry/capture
-                            if user_lat and user_lon:
-                                try:
-                                    loc.latitude = float(user_lat)
-                                    loc.longitude = float(user_lon)
-                                    if not loc.added_by:
-                                        loc.added_by = session.get('full_name') or session.get('username') or session.get('employee_id')
-                                    db.session.commit()
-                                    flash(f'GPS coordinates registered for location "{location}". Location verification is now locked and active.', 'info')
-                                except (TypeError, ValueError):
-                                    pass
+                            parsed_lat = parse_coordinate_str(user_lat)
+                            parsed_lon = parse_coordinate_str(user_lon)
+                            if parsed_lat is not None and parsed_lon is not None:
+                                loc.latitude = parsed_lat
+                                loc.longitude = parsed_lon
+                                if not loc.added_by:
+                                    loc.added_by = session.get('full_name') or session.get('username') or session.get('employee_id')
+                                db.session.commit()
+                                flash(f'GPS coordinates registered for location "{location}". Location verification is now locked and active.', 'info')
                         else:
                             # Standard GPS Verification
-                            try:
-                                lat = float(user_lat)
-                                lon = float(user_lon)
+                            lat = parse_coordinate_str(user_lat)
+                            lon = parse_coordinate_str(user_lon)
+                            if lat is not None and lon is not None:
                                 dist = haversine_distance(lat, lon, loc.latitude, loc.longitude)
                                 if dist > 200:
                                     flash(f'Out of location range! You are {round(dist)} m away from {location}.', 'error')
                                     return redirect(url_for('my_attendance'))
-                            except (TypeError, ValueError):
+                            else:
                                 flash('Could not verify GPS location. Please make sure location permissions are enabled.', 'error')
                                 return redirect(url_for('my_attendance'))
 
@@ -1291,8 +1290,8 @@ def admin_office_locations():
             try:
                 name        = request.form['name'].strip()
                 zone        = request.form.get('zone', '').strip()
-                lat         = float(request.form['latitude']) if request.form.get('latitude') else None
-                lon         = float(request.form['longitude']) if request.form.get('longitude') else None
+                lat         = parse_coordinate_str(request.form.get('latitude'))
+                lon         = parse_coordinate_str(request.form.get('longitude'))
                 
                 max_id = db.session.query(func.max(Location.customer_id)).scalar() or 0
                 creator = session.get('full_name') or session.get('username') or 'Admin'
@@ -1343,8 +1342,8 @@ def admin_office_locations():
                     old_name = loc.customer_name
                     new_name = request.form['name'].strip()
                     zone     = request.form.get('zone', '').strip()
-                    lat      = float(request.form['latitude']) if request.form.get('latitude') else None
-                    lon      = float(request.form['longitude']) if request.form.get('longitude') else None
+                    lat      = parse_coordinate_str(request.form.get('latitude'))
+                    lon      = parse_coordinate_str(request.form.get('longitude'))
                     
                     loc.customer_name = new_name
                     loc.zone          = zone

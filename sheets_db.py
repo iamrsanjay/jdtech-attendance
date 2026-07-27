@@ -118,6 +118,26 @@ def parse_date_str(val):
     except ValueError:
         return None
 
+def parse_coordinate_str(val):
+    if val in ("", None):
+        return None
+    val_str = str(val).strip()
+    try:
+        return float(val_str)
+    except ValueError:
+        pass
+    match = re.search(r'([-+]?\d+(?:\.\d+)?)\s*°?\s*([NSEWnsew])?', val_str)
+    if match:
+        try:
+            num = float(match.group(1))
+            dir_char = match.group(2)
+            if dir_char and dir_char.upper() in ('S', 'W'):
+                num = -abs(num)
+            return num
+        except ValueError:
+            pass
+    return None
+
 def serialize_attendance(r):
     if not r:
         return ""
@@ -547,15 +567,8 @@ def pull_from_sheets(app):
                         except ValueError:
                             c_id = None
                             
-                        try:
-                            lat = float(latitude) if latitude not in ("", None) else None
-                        except ValueError:
-                            lat = None
-                            
-                        try:
-                            lon = float(longitude) if longitude not in ("", None) else None
-                        except ValueError:
-                            lon = None
+                        lat = parse_coordinate_str(latitude)
+                        lon = parse_coordinate_str(longitude)
 
                         db.session.add(Location(
                             customer_id=c_id,
