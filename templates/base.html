@@ -293,10 +293,10 @@ select option { background: #ffffff; color: var(--text); }
     <a href="{{ url_for('change_password') }}" class="nav-item {% if request.endpoint=='change_password' %}active{% endif %}">
       <span class="icon">🔑</span> Change Password
     </a>
+    {% if session.get('role') == 'admin' %}
     <a href="{{ url_for('sync_from_sheets_route') }}" class="nav-item" title="Pull latest edits and deletions from Google Sheets">
       <span class="icon">🔄</span> Sync from Sheets
     </a>
-    {% if session.get('role') == 'admin' %}
     <div class="nav-section">Admin</div>
     <a href="{{ url_for('admin_office_locations') }}" class="nav-item {% if request.endpoint=='admin_office_locations' %}active{% endif %}">
       <span class="icon">📍</span> Office Branches

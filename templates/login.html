@@ -204,12 +204,30 @@
         </div>
         <div class="form-group">
           <label>Password</label>
-          <input name="password" type="password" placeholder="Enter password" required>
+          <div style="position: relative; width: 100%;">
+            <input name="password" id="login_password" type="password" placeholder="Enter password" required style="width: 100%; padding-right: 42px;">
+            <button type="button" onclick="toggleLoginPassword()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 4px; font-size: 16px; color: var(--muted);" title="Toggle Password Visibility">
+              <span id="login_eye_icon">👁️</span>
+            </button>
+          </div>
         </div>
         <button type="submit" class="btn">Sign In →</button>
       </form>
     </div>
   </div>
+  <script>
+    function toggleLoginPassword() {
+      const input = document.getElementById('login_password');
+      const icon = document.getElementById('login_eye_icon');
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.textContent = '🙈';
+      } else {
+        input.type = 'password';
+        icon.textContent = '👁️';
+      }
+    }
+  </script>
 </body>
 <script>
   const quotes = [

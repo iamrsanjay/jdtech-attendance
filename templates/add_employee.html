@@ -65,9 +65,27 @@
         </div>
         <div class="form-group" style="margin:0;">
           <label>Login Password <span style="font-size:11px; color:var(--muted); font-weight:400;">(Optional)</span></label>
-          <input name="password" type="password" placeholder="{% if emp %}Leave blank to keep current{% else %}Defaults to Employee ID if blank{% endif %}" style="width:100%;">
+          <div style="position: relative; width: 100%;">
+            <input name="password" id="add_emp_password" type="password" placeholder="{% if emp %}Leave blank to keep current{% else %}Defaults to Employee ID if blank{% endif %}" style="width:100%; padding-right:42px;">
+            <button type="button" onclick="toggleAddEmpPassword()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 4px; font-size: 16px; color: var(--muted);" title="Toggle Password Visibility">
+              <span id="add_emp_eye_icon">👁️</span>
+            </button>
+          </div>
         </div>
       </div>
+      <script>
+        function toggleAddEmpPassword() {
+          const input = document.getElementById('add_emp_password');
+          const icon = document.getElementById('add_emp_eye_icon');
+          if (input.type === 'password') {
+            input.type = 'text';
+            icon.textContent = '🙈';
+          } else {
+            input.type = 'password';
+            icon.textContent = '👁️';
+          }
+        }
+      </script>
 
       <div class="form-group" style="margin-bottom:24px;">
         <label>Join Date</label>

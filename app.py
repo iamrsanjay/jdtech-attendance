@@ -652,10 +652,17 @@ def mark_attendance():
     for loc in raw_locs:
         if not loc.customer_name:
             continue
-        display_name = loc.customer_name
-        if display_name not in seen_sites:
+        display_name = loc.customer_name.strip()
+        if display_name and display_name not in seen_sites:
             seen_sites.add(display_name)
             sites.append(display_name)
+    # Include any location present in existing records for the day
+    for rec in existing.values():
+        if rec.location and rec.location.strip():
+            loc_name = rec.location.strip()
+            if loc_name not in seen_sites:
+                seen_sites.add(loc_name)
+                sites.append(loc_name)
     sites.sort()
     return render_template('mark_attendance.html',
         employees=employees, existing=existing, selected_date=selected_date,
@@ -757,6 +764,7 @@ def delete_employee(emp_id):
 @app.route('/change-password', methods=['GET', 'POST'])
 @login_required
 def change_password():
+    current_pw = ''
     if request.method == 'POST':
         current_pw = request.form.get('current_password', '').strip()
         new_pw = request.form.get('new_password', '').strip()
@@ -768,10 +776,13 @@ def change_password():
 
         if not emp or emp.password != curr_hash:
             flash('Current password is incorrect.', 'error')
+            return render_template('change_password.html', current_password=current_pw)
         elif not new_pw or len(new_pw) < 4:
             flash('New password must be at least 4 characters long.', 'error')
+            return render_template('change_password.html', current_password=current_pw)
         elif new_pw != confirm_pw:
             flash('New passwords do not match.', 'error')
+            return render_template('change_password.html', current_password=current_pw)
         else:
             emp.password = hashlib.sha256(new_pw.encode()).hexdigest()
             db.session.commit()
@@ -780,7 +791,7 @@ def change_password():
                 return redirect(url_for('dashboard'))
             return redirect(url_for('my_attendance'))
 
-    return render_template('change_password.html')
+    return render_template('change_password.html', current_password='')
 
 @app.route('/reports')
 @login_required
@@ -1411,6 +1422,7 @@ def admin_office_locations():
 
 @app.route('/sync-from-sheets')
 @login_required
+@admin_required
 def sync_from_sheets_route():
     try:
         pull_from_sheets(app)

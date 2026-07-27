@@ -128,15 +128,20 @@
             <td>
               <select id="location_{{ emp.employee_id }}" class="location-select" name="location_{{ emp.employee_id }}" {% if is_absent %}disabled{% endif %} style="width:100%; padding:9px 12px; font-size:13px; background: {% if is_absent %}var(--surface2){% else %}var(--surface){% endif %}; border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: {% if is_absent %}not-allowed{% else %}pointer{% endif %}; opacity: {% if is_absent %}0.5{% else %}1{% endif %};" onchange="handleLocationChange(this)">
                 <option value="" {% if not ex or not ex.location %}selected{% endif %}>— Select —</option>
-                <optgroup label="🏢 Office">
-                  <option value="Office" {% if ex and ex.location == 'Office' %}selected{% endif %}>Office</option>
-                  <option value="WFH" {% if ex and ex.location == 'WFH' %}selected{% endif %}>🏠 WFH</option>
+                <optgroup label="🏢 Main Office & WFH">
+                  <option value="JD Tech" {% if ex and ex.location in ['JD Tech', 'JD TECH', 'Office'] %}selected{% endif %}>JD Tech</option>
+                  <option value="Work from home" {% if ex and ex.location in ['Work from home', 'Work From Home', 'WFH'] %}selected{% endif %}>🏠 Work from home</option>
                 </optgroup>
                 <optgroup label="📍 Client Sites">
                   {% for site in sites %}
+                  {% if site not in ['JD Tech', 'JD TECH', 'Office', 'Work from home', 'Work From Home', 'WFH'] %}
                   <option value="{{ site }}" {% if ex and ex.location == site %}selected{% endif %}>{{ site }}</option>
+                  {% endif %}
                   {% endfor %}
                 </optgroup>
+                {% if ex and ex.location and ex.location not in ['JD Tech', 'JD TECH', 'Office', 'Work from home', 'Work From Home', 'WFH'] and ex.location not in sites %}
+                <option value="{{ ex.location }}" selected>📍 {{ ex.location }}</option>
+                {% endif %}
                 <option value="__NEW__" style="color:var(--accent); font-weight:700;">➕ Add New Location...</option>
               </select>
             </td>
