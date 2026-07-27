@@ -1,9 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, jsonify
 from sqlalchemy import func, case
-import io, hashlib, calendar
+import io, hashlib, calendar, os
 from datetime import date, datetime, timedelta
 from functools import wraps
-from waitress import serve
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.units import cm
@@ -1432,7 +1431,6 @@ if __name__ == '__main__':
     except Exception:
         local_ip = '0.0.0.0'
 
-    import os
     port = int(os.environ.get('PORT', 5001))
     print("=" * 60)
     print("  JD TECH Attendance System — STARTING")
@@ -1443,4 +1441,10 @@ if __name__ == '__main__':
     print("  Share the Network Link with your team members.")
     print("  Make sure all devices are on the same WiFi/LAN.")
     print("=" * 60)
-    serve(app, host='0.0.0.0', port=port, threads=4)
+
+    # Use waitress on Windows, Flask dev server on Linux/cloud
+    try:
+        from waitress import serve
+        serve(app, host='0.0.0.0', port=port, threads=4)
+    except ImportError:
+        app.run(host='0.0.0.0', port=port)
