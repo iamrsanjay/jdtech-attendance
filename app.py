@@ -226,7 +226,7 @@ def login():
                 return redirect(url_for('my_attendance'))
             else:
                 return redirect(url_for('my_attendance'))
-        flash('Invalid Employee ID or password.', 'error')
+        flash('Invalid Username or password.', 'error')
     return render_template('login.html')
 
 @app.route('/entry', methods=['GET', 'POST'])
