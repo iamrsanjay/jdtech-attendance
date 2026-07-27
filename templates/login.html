@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — JD TECH</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --accent: #0f766e;
+      --accent-light: rgba(15, 118, 110, 0.08);
+      --text: #0f172a;
+      --muted: #64748b;
+      --danger: #dc2626;
+      --surface: #ffffff;
+      --surface2: #f8fafc;
+      --border: #e2e8f0;
+      --bg: #f1f5f9;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family:'Inter',sans-serif;
+      background: var(--bg);
+      color:var(--text);
+      min-height:100vh;
+      display:flex; align-items:center; justify-content:center;
+      position:relative; overflow:hidden;
+    }
+
+    /* Soft blobs */
+    .blob {
+      position:absolute; border-radius:50%; filter:blur(80px); pointer-events:none; opacity:0.15;
+    }
+    .blob-1 { width:500px; height:500px; background:rgba(15, 118, 110, 0.15); top:-10%; left:-10%; animation: drift1 20s ease-in-out infinite alternate; }
+    .blob-2 { width:400px; height:400px; background:rgba(37, 99, 235, 0.15); bottom:-10%; right:-10%; animation: drift2 18s ease-in-out infinite alternate; }
+    .blob-3 { width:300px; height:300px; background:rgba(124, 58, 237, 0.1); top:50%; left:60%; animation: drift3 22s ease-in-out infinite alternate; }
+    @keyframes drift1 { 0%{transform:translate(0,0)} 100%{transform:translate(60px,40px)} }
+    @keyframes drift2 { 0%{transform:translate(0,0)} 100%{transform:translate(-50px,-30px)} }
+    @keyframes drift3 { 0%{transform:translate(0,0)} 100%{transform:translate(-30px,50px)} }
+
+    .login-wrap {
+      display:flex; position:relative; z-index:1;
+      background: var(--surface);
+      border-radius:24px; overflow:hidden;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.04);
+      max-width:900px; width:95%;
+      min-height:500px;
+      border:1px solid var(--border);
+    }
+
+    .login-brand {
+      flex:1.2; padding:40px 36px;
+      background: linear-gradient(160deg, #f8fafc 0%, #f1f5f9 100%);
+      display:flex; flex-direction:column; justify-content:space-between;
+      border-right:1px solid var(--border);
+      position:relative; overflow:hidden;
+    }
+    .login-brand::before {
+      content:''; position:absolute; bottom:-20px; right:-20px;
+      width:200px; height:200px; border-radius:50%;
+      background:rgba(15, 118, 110, 0.05); filter:blur(40px);
+    }
+    .brand-tagline {
+      font-size:12px; font-weight:700; color:var(--accent);
+      text-transform:uppercase; letter-spacing:2px; margin-top:12px;
+    }
+    .brand-copy { margin-top:28px; position:relative; z-index:1; }
+    .brand-copy h2 { font-size:28px; font-weight:800; color:var(--text); line-height:1.2; margin-bottom:12px; }
+    .brand-copy p { font-size:14px; color:var(--muted); line-height:1.7; }
+    .features { margin-top:20px; display:flex; flex-direction:column; gap:10px; }
+    .feature { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--muted); }
+    .feature span { color:var(--accent); font-weight:700; font-size:15px; width:22px; height:22px; background:var(--accent-light); border-radius:50%; display:flex; align-items:center; justify-content:center; }
+
+    .login-form {
+      width:380px; padding:48px 36px;
+      display:flex; flex-direction:column; justify-content:center;
+      background: #ffffff;
+    }
+    .login-form h3 { font-size:24px; font-weight:800; color:var(--text); margin-bottom:4px; }
+    .login-form > p { font-size:14px; color:var(--muted); margin-bottom:28px; }
+    .form-group { margin-bottom:20px; }
+    .form-group label { display:block; font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+    .form-group input {
+      width:100%; padding:12px 16px; font-size:14px;
+      background: #ffffff; border:1.5px solid var(--border);
+      border-radius:12px; color:var(--text);
+      font-family:'Inter',sans-serif; transition:all .25s;
+    }
+    .form-group input:focus { outline:none; border-color:var(--accent); background:#ffffff; box-shadow:0 0 0 4px rgba(15, 118, 110, 0.15); }
+    .form-group input::placeholder { color:#94a3b8; }
+    .btn {
+      width:100%; padding:14px; border:none; border-radius:12px;
+      font-size:15px; font-weight:700; cursor:pointer;
+      background: linear-gradient(135deg, var(--accent), #0d9488);
+      color:#ffffff; font-family:'Inter',sans-serif;
+      transition:all .3s; margin-top:8px;
+      box-shadow: 0 4px 14px rgba(15, 118, 110, 0.2);
+    }
+    .btn:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(15, 118, 110, 0.35); }
+    .btn:active { transform:translateY(0); }
+    .alert {
+      padding:10px 14px; border-radius:10px; margin-bottom:16px;
+      font-size:13px; background: rgba(220, 38, 38, 0.08); border:1px solid rgba(220, 38, 38, 0.2); color:var(--danger); font-weight:500;
+    }
+
+    #quoteBox {
+      margin-top:24px; padding:16px 20px;
+      background: var(--accent-light); border-left:3px solid var(--accent);
+      border-radius:0 12px 12px 0; position:relative; z-index:1;
+    }
+    #quoteText { font-size:13px; color:var(--text); line-height:1.6; font-style:italic; transition:opacity 0.5s; }
+    #quoteAuthor { font-size:11px; color:var(--accent); font-weight:600; margin-top:6px; text-transform:uppercase; letter-spacing:1px; }
+
+    /* Live clock */
+    .clock-widget {
+      background: #ffffff; border:1px solid var(--border); border-radius:14px;
+      padding:12px 18px; text-align:right; flex-shrink:0;
+      box-shadow:0 4px 12px rgba(0,0,0,0.03); white-space:nowrap;
+      display:flex; flex-direction:column; align-items:flex-end;
+    }
+
+    .system-status {
+      margin-top:32px; display:flex; align-items:center; gap:8px;
+      padding-top:20px; border-top:1px solid var(--border);
+    }
+    .status-dot {
+      width:8px; height:8px; background:var(--accent); border-radius:50%;
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+
+    @media (max-width: 768px) {
+      body { align-items:flex-start !important; padding:24px 12px !important; overflow-y:auto !important; }
+      .login-wrap {
+        flex-direction:column !important; width:100% !important;
+        max-width:450px !important; min-height:auto !important;
+        border-radius:20px !important; margin:0 auto !important;
+      }
+      .login-brand {
+        padding:24px 20px !important; border-right:none !important;
+        border-bottom:1px solid var(--border) !important;
+      }
+      .brand-copy { margin-top:16px !important; }
+      .brand-copy h2 { font-size:20px !important; }
+      .brand-copy p, .features, #quoteBox { display:none !important; }
+      .login-form { width:100% !important; padding:32px 20px !important; }
+      .login-form p { margin-bottom:20px !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+
+  <div class="login-wrap">
+    <div class="login-brand">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px;">
+        <div>
+          <div style="background:#fff; padding:14px 22px; border-radius:14px; display:inline-block; margin-bottom:16px; box-shadow:0 4px 14px rgba(0,0,0,0.06);">
+            <img src="{{ url_for('static', filename='logo.jpg') }}" alt="JD TECH Logo" style="max-width:150px; height:auto; display:block;">
+          </div>
+          <div class="brand-tagline">Employee Attendance System</div>
+        </div>
+        <div class="clock-widget">
+          <div id="liveClock" style="display:flex; align-items:baseline; gap:6px; font-weight:800; color:var(--accent); white-space:nowrap;">
+            <span id="liveTimeDigits" style="font-size:20px; font-weight:800; font-variant-numeric:tabular-nums;">--:--:--</span>
+            <span id="liveTimeAmpm" style="font-size:13px; font-weight:700; color:var(--accent); text-transform:uppercase;">--</span>
+          </div>
+          <div id="liveDate" style="font-size:10px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-top:4px; white-space:nowrap;">-- --- ----</div>
+        </div>
+      </div>
+      <div class="brand-copy">
+        <h2>Track. Manage.<br>Report.</h2>
+        <p>A complete attendance management solution for modern workplaces.</p>
+        <div class="features">
+          <div class="feature"><span>✓</span> Daily attendance marking</div>
+          <div class="feature"><span>✓</span> Monthly reports &amp; analytics</div>
+          <div class="feature"><span>✓</span> PDF export for payroll</div>
+          <div class="feature"><span>✓</span> Role-based access control</div>
+        </div>
+        <div id="quoteBox">
+          <div id="quoteText"></div>
+          <div id="quoteAuthor"></div>
+        </div>
+        <div class="system-status">
+          <div class="status-dot"></div>
+          <span style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px;">System Online & Secure</span>
+        </div>
+      </div>
+    </div>
+    <div class="login-form">
+      <h3>Welcome back</h3>
+      <p>Sign in to your account</p>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+      <div class="alert">✗ {{ msg }}</div>
+      {% endfor %}
+      {% endwith %}
+      <form method="POST">
+        <div class="form-group">
+          <label>Employee ID</label>
+          <input name="username" type="text" placeholder="Enter Employee ID (e.g. 2023017)" required autofocus>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input name="password" type="password" placeholder="Enter password" required>
+        </div>
+        <button type="submit" class="btn">Sign In →</button>
+      </form>
+    </div>
+  </div>
+</body>
+<script>
+  const quotes = [
+    { text: "Punctuality is not about being on time, it's about respecting your own commitment.", author: "Anonymous" },
+    { text: "Consistency is what transforms average into excellence.", author: "Tony Robbins" },
+    { text: "Time is what we want most, but what we use worst.", author: "William Penn" },
+    { text: "Efficiency is doing things right; effectiveness is doing the right things.", author: "Peter Drucker" },
+    { text: "Your dedication today builds the foundation of tomorrow's success.", author: "JD TECH" }
+  ];
+  let quoteIndex = 0;
+  function showQuote() {
+    const q = quotes[quoteIndex];
+    const textEl = document.getElementById('quoteText');
+    const authEl = document.getElementById('quoteAuthor');
+    if (textEl && authEl) {
+      textEl.style.opacity = 0;
+      setTimeout(() => {
+        textEl.textContent = `"${q.text}"`;
+        authEl.textContent = `— ${q.author}`;
+        textEl.style.opacity = 1;
+      }, 300);
+    }
+    quoteIndex = (quoteIndex + 1) % quotes.length;
+  }
+  showQuote();
+  setInterval(showQuote, 6000);
+
+  function updateClock() {
+    const timeEl = document.getElementById('liveTimeDigits');
+    const ampmEl = document.getElementById('liveTimeAmpm');
+    const dateEl = document.getElementById('liveDate');
+    if (!timeEl || !dateEl) return;
+    const now = new Date();
+    let hours = now.getHours();
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12; hours = hours ? hours : 12;
+    timeEl.textContent = `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
+    if (ampmEl) ampmEl.textContent = ampm;
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    dateEl.textContent = `${days[now.getDay()].substring(0,3)}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+</script>
+</html>

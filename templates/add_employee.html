@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}{% if emp %}Edit Employee — JD TECH{% else %}Add Employee — JD TECH{% endif %}{% endblock %}
+{% block page_title %}{% if emp %}Edit Employee ({{ emp.full_name }}){% else %}Add Employee{% endif %}{% endblock %}
+{% block page_subtitle %}{% if emp %}Update employee profile and configuration{% else %}Register a new employee and configure login access{% endif %}{% endblock %}
+
+{% block content %}
+<div style="max-width:650px;">
+  <div class="card" style="padding: 32px; border-radius: 16px;">
+    <form method="POST">
+      <div class="grid grid-2" style="gap:16px; margin-bottom:16px;">
+        <div class="form-group" style="margin:0;">
+          <label>Employee ID <span style="color:var(--danger);">*</span></label>
+          <input name="employee_id" value="{{ emp.employee_id if emp else '' }}" placeholder="e.g. 2023018" required style="width:100%;">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Full Name <span style="color:var(--danger);">*</span></label>
+          <input name="full_name" value="{{ emp.full_name if emp else '' }}" placeholder="Full name" required style="width:100%;">
+        </div>
+      </div>
+
+      <div class="grid grid-2" style="gap:16px; margin-bottom:16px;">
+        <div class="form-group" style="margin:0;">
+          <label>Department <span style="color:var(--danger);">*</span></label>
+          <select name="department" required style="width:100%;">
+            <option value="">Select Department</option>
+            {% for d in ['SCADA', 'PLC', 'Management', 'HR', 'Sales', 'IT', 'Operations'] %}
+            <option value="{{ d }}" {% if emp and emp.department == d %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Position / Role</label>
+          <input name="position" value="{{ emp.position if emp and emp.position else '' }}" placeholder="Job title (e.g. Engineer)" style="width:100%;">
+        </div>
+      </div>
+
+      <div class="grid grid-2" style="gap:16px; margin-bottom:16px;">
+        <div class="form-group" style="margin:0;">
+          <label>Email Address</label>
+          <input name="email" type="email" value="{{ emp.email if emp and emp.email else '' }}" placeholder="email@jdtech.co.in" style="width:100%;">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Phone Number</label>
+          <input name="phone" value="{{ emp.phone if emp and emp.phone else '' }}" placeholder="Mobile number" style="width:100%;">
+        </div>
+      </div>
+
+      <div class="grid grid-3" style="gap:16px; margin-bottom:16px;">
+        <div class="form-group" style="margin:0;">
+          <label>System Access Role <span style="color:var(--danger);">*</span></label>
+          <select name="role" required style="width:100%;">
+            <option value="employee" {% if not emp or emp.role == 'employee' %}selected{% endif %}>Employee</option>
+            <option value="tl" {% if emp and emp.role == 'tl' %}selected{% endif %}>Team Lead (TL)</option>
+            <option value="admin" {% if emp and emp.role == 'admin' %}selected{% endif %}>Admin</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Reporting To (TL)</label>
+          <select name="reporting_to" style="width:100%;">
+            <option value="">None (Reports to Admin/Direct)</option>
+            {% for tl in tls %}
+            <option value="{{ tl.employee_id }}" {% if emp and emp.reporting_to == tl.employee_id %}selected{% endif %}>{{ tl.full_name }} ({{ tl.employee_id }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Login Password <span style="font-size:11px; color:var(--muted); font-weight:400;">(Optional)</span></label>
+          <input name="password" type="password" placeholder="{% if emp %}Leave blank to keep current{% else %}Defaults to Employee ID if blank{% endif %}" style="width:100%;">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:24px;">
+        <label>Join Date</label>
+        <input name="join_date" type="date" value="{{ emp.join_date.isoformat() if emp and emp.join_date else '' }}" style="width:100%;">
+      </div>
+
+      <style>
+      @media (max-width: 768px) {
+        .btn-group {
+          flex-direction: column !important;
+          align-items: stretch !important;
+          gap: 10px !important;
+        }
+        .btn-group button, 
+        .btn-group a {
+          width: 100% !important;
+          justify-content: center !important;
+        }
+      }
+      </style>
+
+      <div class="btn-group" style="display:flex; gap:12px; justify-content:flex-start;">
+        <button type="submit" class="btn btn-primary" style="padding:12px 28px; box-shadow:0 4px 14px rgba(13,148,136,0.25);">{% if emp %}💾 Save Employee Details{% else %}➕ Add Employee{% endif %}</button>
+        <a href="{{ url_for('employees') }}" class="btn btn-secondary" style="padding:12px 20px;">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

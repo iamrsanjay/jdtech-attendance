@@ -1,0 +1,1090 @@
+{% extends 'base.html' %}
+{% block title %}My Attendance — JD TECH{% endblock %}
+{% block page_title %}My Attendance{% endblock %}
+{% block page_subtitle %}View your personal attendance history and today's status{% endblock %}
+
+{% block content %}
+<style>
+/* Stats grid */
+.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
+.stat-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:14px; padding:20px; display:flex; align-items:center; gap:14px;
+  box-shadow: var(--shadow-sm); transition: all 0.2s;
+}
+.stat-card:hover { box-shadow: var(--shadow-md); transform:translateY(-2px); border-color: var(--accent); }
+.stat-icon {
+  width:48px; height:48px; border-radius:12px;
+  display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0;
+  background: var(--surface2);
+}
+.stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:600; }
+.stat-value { font-size:24px; font-weight:800; margin-top:2px; }
+
+/* Today card */
+.today-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:16px; padding:24px; margin-bottom:24px;
+  display:flex; align-items:center; justify-content:space-between; gap:20px;
+  box-shadow: var(--shadow-sm);
+}
+.today-left { display:flex; align-items:center; gap:16px; }
+.today-icon { font-size:36px; }
+.today-title { font-size:18px; font-weight:700; }
+.today-date { font-size:13px; color:var(--muted); margin-top:2px; }
+
+.status-pill {
+  padding:8px 20px; border-radius:50px; font-size:13px; font-weight:700;
+  letter-spacing:0.5px; display:inline-flex; align-items:center; gap:8px;
+}
+.pill-present { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: var(--present); }
+.pill-absent  { background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.2); color: var(--absent); }
+.pill-halfday { background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.2); color: var(--halfday); }
+.pill-none    { background: rgba(0, 0, 0, 0.04); border: 1px solid var(--border); color: var(--muted); }
+
+.check-times { font-size:13px; color:var(--muted); text-align:right; }
+.check-times strong { color:var(--text); display:block; font-size:15px; }
+
+/* Table */
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; }
+thead th {
+  padding:12px 16px; text-align:left; font-size:11px; color:var(--accent);
+  text-transform:uppercase; letter-spacing:1px; font-weight:600;
+  border-bottom:2px solid var(--border); background:var(--surface2);
+}
+tbody tr { border-bottom:1px solid var(--border); transition:background 0.15s; }
+tbody tr:hover { background: rgba(0,0,0,0.015); }
+tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
+.badge {
+  display:inline-block; padding:4px 12px; border-radius:20px;
+  font-size:11px; font-weight:700; letter-spacing:0.5px;
+}
+.badge-present { background: rgba(16, 185, 129, 0.1); color: var(--present); border: 1px solid rgba(16, 185, 129, 0.2); }
+.badge-absent  { background: rgba(220, 38, 38, 0.1); color: var(--absent); border: 1px solid rgba(220, 38, 38, 0.2); }
+.badge-halfday { background: rgba(124, 58, 237, 0.1); color: var(--halfday); border: 1px solid rgba(124, 58, 237, 0.2); }
+
+/* Empty state */
+.empty-state { text-align:center; padding:64px 24px; }
+.empty-state .icon { font-size:56px; margin-bottom:16px; animation:float 3s ease-in-out infinite; display:block; }
+.empty-state h3 { font-size:22px; font-weight:800; margin-bottom:8px; }
+.empty-state p { color:var(--muted); font-size:14px; line-height:1.6; }
+@keyframes float { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-10px);} }
+
+/* Form Inputs */
+.form-select, .form-input {
+  width:100%; padding:11px 14px; font-size:14px;
+  background: #ffffff; border:1.5px solid var(--border);
+  border-radius:10px; color:var(--text); cursor:pointer;
+  font-family:'Inter',sans-serif; outline:none; transition:all 0.2s;
+}
+.form-select:focus, .form-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(15, 118, 110, 0.15); background: #ffffff; }
+.form-label {
+  display:block; font-size:11px; font-weight:600; color:var(--muted);
+  text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .stats-grid { grid-template-columns:repeat(2,1fr) !important; gap:10px !important; }
+  .stat-card { padding:14px 12px !important; gap:10px !important; }
+  .stat-icon { width:36px !important; height:36px !important; font-size:16px !important; border-radius:8px !important; }
+  .stat-value { font-size:18px !important; }
+  .stat-label { font-size:9px !important; letter-spacing:0.5px !important; }
+  .today-card { flex-direction:column !important; align-items:stretch !important; padding:16px !important; gap:16px !important; }
+  .today-left { justify-content:center !important; }
+  .card { padding:16px !important; }
+  tbody td { padding:10px 8px !important; font-size:12px !important; }
+}
+</style>
+
+  {% if employee %}
+
+  {% if pending_work_update_record %}
+  <!-- Pending Work Update Banner -->
+  <div class="card" style="border:2px solid #f87171; background:#fef2f2; margin-bottom:24px; box-shadow:0 8px 20px rgba(239, 68, 68, 0.12);">
+    <div style="display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+      <div style="font-size:32px; flex-shrink:0;">⚠️</div>
+      <div style="flex:1; min-width:280px;">
+        <div style="font-size:16px; font-weight:800; color:#dc2626; margin-bottom:4px;">
+          Work Update Required for Previous Working Day ({{ pending_work_update_record.date.strftime('%d %b %Y') }})
+        </div>
+        <div style="font-size:13px; color:#991b1b; line-height:1.5; margin-bottom:14px;">
+          You clocked in on <strong>{{ pending_work_update_record.date.strftime('%d %b %Y') }}</strong> but haven't submitted your daily work update yet. 
+          <strong>Attendance clock-in for today is locked</strong> until you submit your work update for that day.
+        </div>
+        <form method="POST" action="{{ url_for('update_work_update') }}" style="display:flex; flex-direction:column; gap:10px;">
+          <input type="hidden" name="record_id" value="{{ pending_work_update_record.id }}">
+          <textarea name="work_update" required placeholder="Enter what tasks / work you completed on {{ pending_work_update_record.date.strftime('%d %b %Y') }}..." class="form-input" style="min-height:80px; resize:vertical; background:#ffffff; border-color:#fca5a5; font-family:'Inter',sans-serif;"></textarea>
+          <div style="display:flex; justify-content:flex-end;">
+            <button type="submit" class="btn" style="background:linear-gradient(135deg, #ef4444, #dc2626); color:#fff; padding:10px 24px; border-radius:10px; font-weight:700; font-size:13px; border:none; cursor:pointer; box-shadow:0 4px 12px rgba(220,38,38,0.25);">
+              📝 Submit Work Update & Unlock Clock In
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Today's Status Card -->
+  <div class="today-card">
+    <div class="today-left">
+      <div class="today-icon">
+        {% if today_record %}
+          {% if today_record.status == 'Present' %}✅
+          {% elif today_record.status == 'Absent' %}❌
+          {% else %}🕐{% endif %}
+        {% else %}📅{% endif %}
+      </div>
+      <div>
+        <div class="today-title">Today's Status</div>
+        <div class="today-date">{{ today }}</div>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:24px;">
+      {% if today_record %}
+        <div class="check-times" style="text-align:left;">
+          <span style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:4px;">Location & Times</span>
+          {% if today_record.location %}
+            <span style="background:var(--accent-light); color:var(--accent); border:1px solid #99f6e4; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600; display:inline-block; margin-bottom:4px;">📍 {{ today_record.location }}</span>
+          {% endif %}
+          <div style="font-size:12px; color:var(--text);">
+            Check In: <strong>{{ today_record.check_in or '—' }}</strong>
+            {% if today_record.check_out %}
+            &nbsp;·&nbsp; Check Out: <strong style="color:#059669;">{{ today_record.check_out }}</strong>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if today_record.status == 'Present' %}
+        <span class="status-pill pill-present">● Present</span>
+        {% elif today_record.status == 'Absent' %}
+        <span class="status-pill pill-absent">● Absent</span>
+        {% else %}
+        <span class="status-pill pill-halfday">● Half Day</span>
+        {% endif %}
+      {% else %}
+        <span class="status-pill pill-none">⏳ Not Yet Marked</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if today_record and today_record.status != 'Absent' %}
+    {% if not today_record.check_out %}
+    <!-- Active Shift / Clock Out Card -->
+    <div class="card" style="border:1.5px solid #fde68a; background:#fffbeb; margin-bottom:24px;">
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+          <div>
+            <div style="font-size:16px; font-weight:700; color:#d97706; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
+              ⏰ Active Work Shift
+            </div>
+            <div style="font-size:13px; color:var(--muted);">
+              Checked in at <strong>{{ today_record.check_in or 'Today' }}</strong> at <strong>{{ today_record.location or 'Office' }}</strong>{% if today_record.zone %} (Zone: {{ today_record.zone }}){% endif %}.
+            </div>
+          </div>
+          {% if today_record.work_update %}
+          <div style="font-size:12px; background:#fef3c7; border:1px solid #fde68a; padding:6px 12px; border-radius:8px; color:#b45309;">
+            ✅ Today's Work Update: <strong>{{ today_record.work_update }}</strong>
+          </div>
+          {% endif %}
+        </div>
+
+        <form id="clockOutForm" method="POST" action="{{ url_for('my_attendance') }}" style="margin:0; display:flex; flex-direction:column; gap:12px;" onsubmit="return handleClockOut(event)">
+          <input type="hidden" name="action" value="clock_out">
+          <input type="hidden" id="clock_out_notes" name="notes" value="">
+          <div>
+            <label class="form-label" style="color:#b45309;">Work Update for Today <span style="font-weight:400; text-transform:none; color:var(--muted);">(Enter tasks completed today)</span></label>
+            <textarea name="work_update" placeholder="Enter work update for today..." class="form-input" style="min-height:60px; background:#ffffff; border-color:#fde68a;">{{ today_record.work_update or '' }}</textarea>
+          </div>
+          <div style="display:flex; justify-content:flex-end;">
+            <button type="submit" class="btn" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#fff; padding:12px 28px; border-radius:12px; font-weight:700; font-size:14px; box-shadow:0 4px 14px rgba(245,158,11,0.25); border:none; cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.2s;">
+              🚪 Clock Out Now
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <!-- Shift Completed Card -->
+    <div class="card" style="border:1.5px solid #a7f3d0; background:#ecfdf5; margin-bottom:24px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="font-size:24px;">✅</span>
+          <div>
+            <div style="font-size:15px; font-weight:700; color:#059669;">Shift Completed</div>
+            <div style="font-size:13px; color:var(--muted);">
+              Checked in: <strong>{{ today_record.check_in or '—' }}</strong> &nbsp;·&nbsp; Clocked out: <strong>{{ today_record.check_out }}</strong>
+            </div>
+          </div>
+        </div>
+        <span class="badge badge-present" style="font-size:13px; padding:6px 14px;">Clocked Out</span>
+      </div>
+    </div>
+    {% endif %}
+  {% endif %}
+
+  {% if not today_record %}
+  <!-- Manual Attendance Entry Form -->
+  <div class="card" style="border:1.5px solid #99f6e4;">
+    <div class="card-title" style="color:var(--accent);">
+      ✍️ Manual Attendance Entry
+    </div>
+
+    {% if location_checking_enabled %}
+    <!-- GPS Status Bar -->
+    <div id="gps-strip" style="background:#f0fdfa; border:1px solid #99f6e4; border-radius:12px; padding:14px 18px; margin-bottom:20px; display:flex; align-items:center; gap:14px;">
+      <span id="gps-icon" style="font-size:24px; flex-shrink:0;">📍</span>
+      <div style="flex:1;">
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:3px;">Location Check</div>
+        <div id="gps-status-text" style="font-size:13px; color:var(--text);">Location will be verified when you submit with "Present" status.</div>
+      </div>
+      <button type="button" id="retryLocBtn" onclick="retryLocationCheck()" style="display:none; padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid var(--border); background:var(--surface2); color:var(--text);">🔄 Retry</button>
+    </div>
+
+    <!-- Insecure Origin Troubleshooting Card -->
+    <div id="gps-troubleshoot-card" style="display:none; background:#fef2f2; border:1px solid #fecaca; border-radius:12px; padding:18px; margin-bottom:20px;">
+      <div style="font-size:14px; font-weight:700; color:#dc2626; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+        💡 Insecure HTTP Connection Detected
+      </div>
+      <div style="font-size:13px; color:var(--muted); line-height:1.6;">
+        Modern browsers block location access on non-secure (HTTP) connections over network. To resolve:
+        <ul style="margin:8px 0 0 16px; padding:0; display:flex; flex-direction:column; gap:6px;">
+          <li><strong>Use Localhost:</strong> Access via <a href="http://localhost:5001" style="color:var(--accent2); text-decoration:underline;">http://localhost:5001</a></li>
+          <li><strong>Setup HTTPS:</strong> Use <strong>ngrok</strong> (<code>ngrok http 5001</code>) for secure HTTPS.</li>
+          <li><strong>Chrome Override:</strong>
+            <ol style="margin:4px 0 0 16px; padding:0; list-style-type:decimal; display:flex; flex-direction:column; gap:2px;">
+              <li>Go to: <code style="background:var(--surface2); padding:2px 5px; border-radius:4px; font-size:11px; color:#dc2626;">chrome://flags/#unsafely-treat-insecure-origin-as-secure</code></li>
+              <li>Set to <strong>Enabled</strong> and add the app URL.</li>
+              <li>Relaunch the browser.</li>
+            </ol>
+          </li>
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Out-of-location popup modal -->
+    <div id="location-blocked-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.3); backdrop-filter:blur(6px); align-items:center; justify-content:center;">
+      <div style="background:#fff; border:1.5px solid #fecaca; border-radius:20px; padding:36px 32px; max-width:420px; width:90%; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.12);">
+        <div style="font-size:56px; margin-bottom:16px;">🚫</div>
+        <div style="font-size:20px; font-weight:800; color:#dc2626; margin-bottom:10px;">Not at Office Location</div>
+        <div id="modal-distance-text" style="font-size:14px; color:var(--muted); line-height:1.6; margin-bottom:24px;"></div>
+        <button onclick="closeLocationModal()" style="padding:12px 28px; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; border:none; background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff;">OK, Got It</button>
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('my_attendance') }}" id="manualAttendanceForm">
+      <input type="hidden" name="user_lat" id="user_lat">
+      <input type="hidden" name="user_lon" id="user_lon">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:20px; margin-bottom:20px;">
+
+        <!-- Status Options -->
+        <div>
+          <label class="form-label">Select Attendance Status</label>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            {% for s, cls, emoji in [('Present','present','✓'),('Absent','absent','✗'),('Half Day','halfday','½')] %}
+            <label class="status-option-label" style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text); background:var(--surface2); border:1.5px solid var(--border); border-radius:10px; padding:10px 16px; flex:1; min-width:100px; justify-content:center; transition:all 0.25s;">
+              <input type="radio" name="status" value="{{ s }}" {% if s == 'Present' %}checked{% endif %} style="width:16px; height:16px; accent-color:var(--{{ cls }}); cursor:pointer; margin:0;" onchange="updateNotesField(this.value)">
+              <span style="color:var(--{{ cls }});">{{ emoji }} {{ s }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Location Dropdown -->
+        <div>
+          <label class="form-label">Select Location</label>
+          <select id="manual_location" class="form-select" name="location" required onchange="handleLocationChange(this)">
+            <option value="" disabled selected>— Select Work Location —</option>
+            <option value="JD Tech">JD Tech</option>
+            <option value="Work from home">Work from home</option>
+            {% for loc in locations %}
+            {% if loc.name and loc.name.strip() not in ['JD Tech', 'Work from home', 'JD TECH', 'Work From Home', 'WFH'] %}
+            <option value="{{ loc.name }}" data-gps="{{ loc.gps_enabled }}" data-lat="{{ loc.latitude or 0.0 }}" data-lon="{{ loc.longitude or 0.0 }}" data-radius="200">{{ loc.name }}</option>
+            {% endif %}
+            {% endfor %}
+            <option value="__NEW__" style="color:var(--accent); font-weight:700;">➕ Add New Location...</option>
+          </select>
+
+          <!-- GPS Coordinates Input (Visible only if location has no GPS coordinates configured) -->
+          <div id="coords_input_container" style="display:none; margin-top:15px; border:1px dashed var(--border); padding:14px; border-radius:10px; background:var(--surface2);">
+            <div style="font-size:12px; font-weight:700; color:var(--accent); margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+              ⚠️ GPS Coordinates Not Configured
+            </div>
+            <p style="font-size:12px; color:var(--muted); margin-bottom:12px;">This location does not have coordinates configured. Please capture or enter the current coordinates to save them.</p>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+              <div>
+                <label class="form-label" style="font-size:10px; margin-bottom:4px;">Latitude</label>
+                <input type="text" id="manual_lat" name="user_lat" placeholder="e.g. 12.886988" style="padding:8px 12px; font-size:13px;">
+              </div>
+              <div>
+                <label class="form-label" style="font-size:10px; margin-bottom:4px;">Longitude</label>
+                <input type="text" id="manual_lon" name="user_lon" placeholder="e.g. 80.070202" style="padding:8px 12px; font-size:13px;">
+              </div>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="captureCurrentGps()" style="width:100%; display:flex; align-items:center; justify-content:center; gap:6px; font-size:12px;">
+              🛰️ Capture My Current Coordinates
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:20px; margin-bottom:20px;">
+        <!-- Zone Dropdown -->
+        <div>
+          <label class="form-label">Zone</label>
+          <select id="manual_zone" name="zone" class="form-select" onchange="handleZoneChange(this)">
+            <option value="" disabled selected>— Select Zone —</option>
+          </select>
+          <input type="text" id="manual_zone_text" name="zone_text" placeholder="Or type zone manually..." class="form-input" style="margin-top:8px;">
+        </div>
+
+        <!-- PO Number Dropdown + manual entry -->
+        <div>
+          <label class="form-label">PO Number</label>
+          <select id="manual_po" name="po_number" class="form-select" onchange="handlePOChange(this)">
+            <option value="" disabled selected>— Select PO (Choose Zone First) —</option>
+          </select>
+          <input type="text" id="manual_po_text" name="po_number_text" placeholder="Or type PO number manually..." class="form-input" style="margin-top:8px;">
+        </div>
+
+        <!-- Reporting Person (editable) -->
+        <div>
+          <label class="form-label">Reporting Person</label>
+          <input type="text" id="manual_reporting_person" name="reporting_person" placeholder="Enter reporting person name" class="form-input">
+        </div>
+      </div>
+
+      <!-- Work Update Field -->
+      <div style="margin-bottom:20px;">
+        <label class="form-label">Work Update / Planned Tasks For Today <span style="font-weight:400; text-transform:none; color:var(--muted);">(Optional at Clock In, can be updated anytime)</span></label>
+        <textarea name="work_update" placeholder="Describe the work or tasks for today..." class="form-input" style="min-height:60px; resize:vertical;"></textarea>
+      </div>
+
+      <!-- Notes Field -->
+      <div style="margin-bottom:20px;">
+        <label class="form-label">Optional Notes / Comments</label>
+        <input type="text" id="manual_notes" name="notes" placeholder="e.g. Any specific details or comments (Required for Half Day)" class="form-input">
+      </div>
+
+      <!-- Submit Button -->
+      <div style="display:flex; justify-content:flex-end;">
+        {% if pending_work_update_record %}
+        <button type="button" disabled class="btn-submit" style="display:inline-flex; align-items:center; gap:8px; padding:12px 28px; border-radius:12px; font-size:14px; font-weight:700; cursor:not-allowed; border:none; background:#9ca3af; color:#fff; box-shadow:none; opacity:0.8;">
+          🔒 Locked (Submit Work Update for {{ pending_work_update_record.date.strftime('%d %b') }} First)
+        </button>
+        {% else %}
+        <button type="submit" id="btn_submit_manual" class="btn-submit" style="display:inline-flex; align-items:center; gap:8px; padding:12px 28px; border-radius:12px; font-size:14px; font-weight:700; cursor:pointer; border:none; background:linear-gradient(135deg, var(--accent), #14b8a6); color:#fff; box-shadow:0 4px 14px rgba(13,148,136,0.25); font-family:'Inter',sans-serif; transition:all 0.25s;">
+          💾 Submit Attendance
+        </button>
+        {% endif %}
+      </div>
+
+    </form>
+  </div>
+
+  <style>
+    .status-option-label:hover { background:rgba(255, 255, 255, 0.05) !important; border-color:var(--accent) !important; transform:translateY(-1px); }
+    .status-option-label:has(input:checked) { background:var(--accent-light) !important; border-color:var(--accent) !important; }
+    .btn-submit:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0, 242, 254, 0.4) !important; }
+    .btn-submit:active { transform:translateY(0); }
+    @keyframes fadeUp { from{transform:translateY(20px);opacity:0;} to{transform:translateY(0);opacity:1;} }
+  </style>
+
+  <script>
+    const masterLocations = {{ locations|tojson }};
+    const masterPOs = {{ pos|tojson }};
+
+    function handleClockOut(event) {
+      event.preventDefault();
+      const checkInStr = "{{ today_record.check_in if today_record else '' }}";
+      if (!checkInStr || checkInStr === "None" || checkInStr === "—") {
+        document.getElementById('clockOutForm').submit();
+        return true;
+      }
+
+      const now = new Date();
+      const [ciH, ciM] = checkInStr.split(':').map(Number);
+      const checkInDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), ciH, ciM, 0);
+      
+      let diffMs = now - checkInDate;
+      if (diffMs < 0) {
+        checkInDate.setDate(checkInDate.getDate() - 1);
+        diffMs = now - checkInDate;
+      }
+      const diffHours = diffMs / (1000 * 60 * 60);
+
+      if (diffHours < 8) {
+        let reason = "";
+        while (!reason || reason.trim() === "") {
+          reason = prompt("You are logging out in less than 8 hours. Please provide a reason for early logout (Notes):");
+          if (reason === null) {
+            return false;
+          }
+          if (reason.trim() === "") {
+            alert("A reason is required to log out early.");
+          }
+        }
+        document.getElementById('clock_out_notes').value = reason.trim();
+      }
+
+      document.getElementById('clockOutForm').submit();
+      return true;
+    }
+
+  const LOCATION_CHECKING = {{ 'true' if location_checking_enabled else 'false' }};
+  let locationVerified = false;
+  let _pendingLocation = { name: '', lat: 0, lon: 0, radius: 200 };
+
+  function setGpsStatus(icon, text, borderColor, isError) {
+    const strip = document.getElementById('gps-strip');
+    const stripIcon = document.getElementById('gps-icon');
+    const stripText = document.getElementById('gps-status-text');
+    const retryBtn = document.getElementById('retryLocBtn');
+
+    if (stripIcon) stripIcon.textContent = icon;
+    if (stripText) stripText.innerHTML = text;
+    if (strip) strip.style.borderColor = borderColor;
+
+    if (retryBtn) {
+      retryBtn.style.display = isError ? 'inline-block' : 'none';
+    }
+  }
+
+  function showLocationBlockedModal(message) {
+    const modal = document.getElementById('location-blocked-modal');
+    const text = document.getElementById('modal-distance-text');
+    if (text) text.innerHTML = message;
+    if (modal) { modal.style.display = 'flex'; }
+  }
+
+  function closeLocationModal() {
+    const modal = document.getElementById('location-blocked-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function retryLocationCheck() {
+    if (_pendingLocation.name) {
+      doLocationCheck(_pendingLocation.name, _pendingLocation.lat, _pendingLocation.lon, _pendingLocation.radius, function(ok) {
+        if (ok) {
+          // Allow form submit
+          document.getElementById('manualAttendanceForm').submit();
+        }
+      });
+    }
+  }
+
+  function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const phi1 = lat1 * Math.PI / 180;
+    const phi2 = lat2 * Math.PI / 180;
+    const dphi = (lat2 - lat1) * Math.PI / 180;
+    const dlam = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dphi/2)**2 + Math.cos(phi1)*Math.cos(phi2)*Math.sin(dlam/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function doLocationCheck(name, targetLat, targetLon, targetRadius, callback) {
+    _pendingLocation = { name, lat: targetLat, lon: targetLon, radius: targetRadius };
+
+    const strip = document.getElementById('gps-strip');
+    if (strip) { strip.style.background = '#eff6ff'; strip.style.borderColor = '#93c5fd'; }
+
+    const troubleshootCard = document.getElementById('gps-troubleshoot-card');
+    if (troubleshootCard) troubleshootCard.style.display = 'none';
+
+    if (!navigator.geolocation) {
+      setGpsStatus('⚠️', 'Location services unavailable in this browser.', '#fde68a', true);
+      callback(false);
+      return;
+    }
+
+    setGpsStatus('📡', `Detecting GPS position for <strong>${name}</strong>…`, '#93c5fd', false);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+
+        document.getElementById('user_lat').value = lat;
+        document.getElementById('user_lon').value = lon;
+
+        const dist = calculateDistance(lat, lon, targetLat, targetLon);
+
+        if (dist <= targetRadius) {
+          locationVerified = true;
+          setGpsStatus('✅', `✅ Confirmed — you are within <strong>${name}</strong> (${Math.round(dist)} m away).`, '#a7f3d0', false);
+          if (strip) strip.style.background = '#ecfdf5';
+          callback(true);
+        } else {
+          locationVerified = false;
+          setGpsStatus('❌', `❌ Out of range: you are <strong>${Math.round(dist)} m</strong> away from <strong>${name}</strong> (Allowed: ${targetRadius} m).`, '#fecaca', true);
+          if (strip) strip.style.background = '#fef2f2';
+          showLocationBlockedModal(
+            `You selected <strong>${name}</strong> but you are <strong>${Math.round(dist)} metres</strong> away.<br><br>Attendance can only be marked within ${targetRadius} m of the location.`
+          );
+          callback(false);
+        }
+      },
+      (err) => {
+        let hint = 'Location access failed. Please enable location permissions.';
+        if (err.code === 1) hint = 'Location permission denied. Please allow it.';
+        else if (err.code === 2) hint = 'GPS signal unavailable.';
+        else if (err.code === 3) hint = 'Location verification timed out.';
+        setGpsStatus('⚠️', `⚠️ ${hint}`, '#fde68a', true);
+
+        // Check for insecure origin
+        if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          if (troubleshootCard) {
+            troubleshootCard.style.display = 'block';
+            const urlPlaceholder = document.getElementById('app-url-placeholder');
+            if (urlPlaceholder) urlPlaceholder.textContent = window.location.origin;
+          }
+        }
+        callback(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  }
+
+  function updateNotesField(status) {
+    const notesEl    = document.getElementById('manual_notes');
+    const locationEl = document.getElementById('manual_location');
+
+    if (notesEl) {
+      if (status === 'Half Day') {
+        notesEl.required = true;
+        notesEl.placeholder = 'Please enter reason for Half Day (Required)';
+        notesEl.style.borderColor = '#fecaca';
+      } else {
+        notesEl.required = false;
+        notesEl.placeholder = 'e.g. Any specific details or comments';
+        notesEl.style.borderColor = '';
+      }
+    }
+
+    if (status === 'Absent') {
+      if (locationEl) { locationEl.required = false; locationEl.disabled = true; locationEl.value = ''; }
+      locationVerified = true;
+      setGpsStatus('ℹ️', 'Location check not required for Absent status.', '#e2e8f0', false);
+    } else {
+      if (locationEl) { locationEl.required = true; locationEl.disabled = false; }
+      locationVerified = false;
+    }
+  }
+
+  // Form submit: verify location ONLY when status is Present
+  document.getElementById('manualAttendanceForm').addEventListener('submit', function(e) {
+    const selectedStatus = document.querySelector('input[name="status"]:checked');
+    const status = selectedStatus ? selectedStatus.value : '';
+    const locationEl = document.getElementById('manual_location');
+    const selectedLocation = locationEl ? locationEl.value : '';
+
+    // For Absent, just submit
+    if (status === 'Absent') return;
+
+    // For Present / Half Day, need location selected
+    if (!selectedLocation || selectedLocation === '__NEW__') {
+      e.preventDefault();
+      showLocationBlockedModal('Please <strong>select a work location</strong> first.');
+      return;
+    }
+
+    // Only do GPS check for Present status
+    if (status === 'Present') {
+      const cleanLoc = cleanStr(selectedLocation);
+      const isWfh = (cleanLoc === 'workfromhome' || cleanLoc === 'wfh' || cleanLoc === 'work from home');
+      
+      if (isWfh) {
+        // Bypass GPS check for Work From Home
+        locationVerified = true;
+      } else {
+        const locObj = masterLocations.find(l => l.name === selectedLocation);
+        const manualLatVal = document.getElementById('manual_lat').value.trim();
+        const manualLonVal = document.getElementById('manual_lon').value.trim();
+        const hasCoords = locObj && locObj.latitude && locObj.longitude;
+
+        if (!hasCoords && manualLatVal && manualLonVal) {
+          const latFloat = parseFloat(manualLatVal);
+          const lonFloat = parseFloat(manualLonVal);
+          if (isNaN(latFloat) || isNaN(lonFloat)) {
+            e.preventDefault();
+            alert("Please enter valid numeric latitude and longitude coordinates.");
+            return;
+          }
+
+          if (!locationVerified) {
+            e.preventDefault();
+            const btn = document.getElementById('btn_submit_manual');
+            if (btn) { btn.textContent = 'Verifying Location…'; btn.disabled = true; btn.style.opacity = '.7'; }
+
+            doLocationCheck(selectedLocation, latFloat, lonFloat, 200, function(ok) {
+              if (ok) {
+                document.getElementById('manualAttendanceForm').submit();
+              } else {
+                if (btn) { btn.textContent = '💾 Submit Attendance'; btn.disabled = false; btn.style.opacity = '1'; }
+              }
+            });
+            return;
+          }
+        } else if (locObj && locObj.gps_enabled && !locationVerified) {
+          e.preventDefault();
+          const btn = document.getElementById('btn_submit_manual');
+          if (btn) { btn.textContent = 'Verifying Location…'; btn.disabled = true; btn.style.opacity = '.7'; }
+
+          doLocationCheck(selectedLocation, locObj.latitude, locObj.longitude, locObj.radius_m, function(ok) {
+            if (ok) {
+              document.getElementById('manualAttendanceForm').submit();
+            } else {
+              if (btn) { btn.textContent = '💾 Submit Attendance'; btn.disabled = false; btn.style.opacity = '1'; }
+            }
+          });
+          return;
+        }
+      }
+    }
+
+    // Allow submit
+    const btn = document.getElementById('btn_submit_manual');
+    if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; btn.style.opacity = '.7'; }
+  });
+
+  function cleanStr(s) {
+    return s ? s.replace(/\s+/g, '').toLowerCase() : '';
+  }
+
+  function handlePOChange(selectEl) {
+    const val     = selectEl.value;
+    const locVal  = document.getElementById('manual_location').value;
+    const zoneVal = document.getElementById('manual_zone').value;
+    const rpInput = document.getElementById('manual_reporting_person');
+    const poText  = document.getElementById('manual_po_text');
+
+    const matchedPo = masterPOs.find(p =>
+      cleanStr(p.customer_name) === cleanStr(locVal) &&
+      cleanStr(p.zone) === cleanStr(zoneVal) &&
+      p.po_number === val
+    );
+    if (matchedPo) {
+      // Auto-fill RP only if field is empty
+      if (!rpInput.value) rpInput.value = matchedPo.reporting_person || '';
+    }
+    // Sync manual text box
+    if (poText) poText.value = val || '';
+  }
+
+  function handleZoneChange(selectEl) {
+    const val    = selectEl.value;
+    const locVal = document.getElementById('manual_location').value;
+    const zoneText = document.getElementById('manual_zone_text');
+    if (zoneText) zoneText.value = val || '';
+
+    // Find all POs matching this customer + zone
+    const matchedPOs = masterPOs.filter(p =>
+      cleanStr(p.customer_name) === cleanStr(locVal) && cleanStr(p.zone) === cleanStr(val)
+    );
+
+    const poSelect = document.getElementById('manual_po');
+    const rpInput  = document.getElementById('manual_reporting_person');
+    const poText   = document.getElementById('manual_po_text');
+
+    poSelect.innerHTML = '';
+    if (poText) poText.value = '';
+
+    if (matchedPOs.length === 0) {
+      poSelect.innerHTML = '<option value="" disabled selected>— No POs for this zone —</option>';
+    } else if (matchedPOs.length === 1) {
+      const po = matchedPOs[0];
+      poSelect.innerHTML = `<option value="${po.po_number}" selected>${po.po_number} (${po.days} days)</option>`;
+      if (!rpInput.value) rpInput.value = po.reporting_person || '';
+      if (poText) poText.value = po.po_number;
+    } else {
+      poSelect.innerHTML = '<option value="" disabled selected>— Select PO Number —</option>';
+      matchedPOs.forEach(po => {
+        const opt = document.createElement('option');
+        opt.value = po.po_number;
+        opt.textContent = `${po.po_number} (${po.days} days)`;
+        poSelect.appendChild(opt);
+      });
+    }
+  }
+
+  function captureCurrentGps() {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          document.getElementById('manual_lat').value = position.coords.latitude.toFixed(6);
+          document.getElementById('manual_lon').value = position.coords.longitude.toFixed(6);
+          alert("GPS Coordinates captured successfully!");
+        },
+        (error) => {
+          alert("Error capturing GPS coordinates: " + error.message);
+        },
+        { enableHighAccuracy: true }
+      );
+    } else {
+      alert("Geolocation is not supported by this browser.");
+    }
+  }
+
+  function handleLocationChange(selectEl) {
+    const val = selectEl.value;
+    const cVal = cleanStr(val);
+
+    const zoneSelect = document.getElementById('manual_zone');
+    const zoneText = document.getElementById('manual_zone_text');
+    const poSelect = document.getElementById('manual_po');
+    const poText = document.getElementById('manual_po_text');
+    const rpInput = document.getElementById('manual_reporting_person');
+    const coordsContainer = document.getElementById('coords_input_container');
+    const manualLat = document.getElementById('manual_lat');
+    const manualLon = document.getElementById('manual_lon');
+
+    const zoneCol = zoneSelect ? zoneSelect.closest('div') : null;
+    const poCol = poSelect ? poSelect.closest('div') : null;
+    const rpCol = rpInput ? rpInput.closest('div') : null;
+
+    // Reset fields
+    if (zoneSelect) zoneSelect.innerHTML = '<option value="" disabled selected>— Select Zone —</option>';
+    if (poSelect) poSelect.innerHTML = '<option value="" disabled selected>— Select PO —</option>';
+    if (rpInput) rpInput.value = "";
+    if (zoneText) zoneText.value = "";
+    if (poText) poText.value = "";
+    locationVerified = false;
+
+    const isJdTech = (cVal === 'jdtech' || cVal === 'jd tech');
+    const isWfh = (cVal === 'workfromhome' || cVal === 'wfh' || cVal === 'work from home');
+
+    if (isJdTech || isWfh) {
+      // Disable PO, Zone, and Reporting Person
+      if (zoneSelect) { zoneSelect.disabled = true; zoneSelect.value = ""; }
+      if (zoneText) { zoneText.disabled = true; zoneText.value = ""; zoneText.style.display = "none"; }
+      if (poSelect) { poSelect.disabled = true; poSelect.value = ""; }
+      if (poText) { poText.disabled = true; poText.value = ""; poText.style.display = "none"; }
+      if (rpInput) { rpInput.disabled = true; rpInput.value = ""; }
+
+      if (zoneCol) zoneCol.style.opacity = "0.4";
+      if (poCol) poCol.style.opacity = "0.4";
+      if (rpCol) rpCol.style.opacity = "0.4";
+
+      // Hide GPS coordinates container
+      if (coordsContainer) coordsContainer.style.display = 'none';
+      if (manualLat) { manualLat.required = false; manualLat.value = ''; }
+      if (manualLon) { manualLon.required = false; manualLon.value = ''; }
+
+      if (isWfh) {
+        // Work from home: location check is completely bypassed
+        locationVerified = true;
+        setGpsStatus('🏡', 'Work From Home selected. GPS location check is disabled.', '#86efac', false);
+      } else {
+        // JD Tech: PO, Zone, RP options disabled
+        setGpsStatus('🏢', 'JD Tech selected. PO, Zone & Reporting Person options disabled.', '#93c5fd', false);
+      }
+      return;
+    }
+
+    // Enable fields for normal locations
+    if (zoneSelect) zoneSelect.disabled = false;
+    if (zoneText) { zoneText.disabled = false; zoneText.style.display = "block"; }
+    if (poSelect) poSelect.disabled = false;
+    if (poText) { poText.disabled = false; poText.style.display = "block"; }
+    if (rpInput) rpInput.disabled = false;
+
+    if (zoneCol) zoneCol.style.opacity = "1";
+    if (poCol) poCol.style.opacity = "1";
+    if (rpCol) rpCol.style.opacity = "1";
+
+    if (val === '__NEW__') {
+      const newLocName = prompt("Enter new location name:");
+      if (newLocName && newLocName.trim() !== "") {
+        const trimmed = newLocName.trim();
+        fetch('/api/locations/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: trimmed })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) { window.location.reload(); }
+          else { alert("Error: " + (data.error || "Could not add location")); selectEl.value = ""; }
+        })
+        .catch(err => { console.error(err); alert("Error adding location."); selectEl.value = ""; });
+      } else {
+        selectEl.value = "";
+      }
+      return;
+    }
+
+    const locObj = masterLocations.find(l => l.name === val);
+    
+    // Toggle manual coords inputs based on whether location has GPS coordinates
+    const hasCoords = locObj && locObj.latitude && locObj.longitude;
+    if (!hasCoords && val !== '') {
+      coordsContainer.style.display = 'block';
+      manualLat.required = true;
+      manualLon.required = true;
+    } else {
+      coordsContainer.style.display = 'none';
+      manualLat.required = false;
+      manualLon.required = false;
+      manualLat.value = '';
+      manualLon.value = '';
+    }
+    
+    // Find all POs matching this customer/location
+    const locationPOs = masterPOs.filter(p => cleanStr(p.customer_name) === cleanStr(val));
+    
+    // Check if there are any zones in the POs or the location object
+    const poHasZones = locationPOs.some(p => p.zone && p.zone.trim() !== "");
+    const locHasZones = locObj && locObj.zones && locObj.zones.length > 0;
+    
+    if (locHasZones || poHasZones) {
+      // Show and require Zone selection
+      zoneWrapper.style.display = 'block';
+      zoneSelect.required = true;
+      
+      // Get unique zones
+      const zones = new Set();
+      if (locObj && locObj.zones) {
+        locObj.zones.forEach(z => zones.add(z));
+      }
+      locationPOs.forEach(p => {
+        if (p.zone && p.zone.trim()) {
+          zones.add(p.zone.trim());
+        }
+      });
+      
+      zones.forEach(z => {
+        const opt = document.createElement('option');
+        opt.value = z;
+        opt.textContent = z;
+        zoneSelect.appendChild(opt);
+      });
+      
+      poSelect.innerHTML = '<option value="" disabled selected>— Choose Zone First —</option>';
+    } else {
+      // Hide and make Zone optional
+      zoneWrapper.style.display = 'none';
+      zoneSelect.required = false;
+      zoneSelect.innerHTML = '<option value="" selected></option>'; // set dummy selected value
+
+      // Populate POs directly!
+      if (locationPOs.length === 0) {
+        poSelect.innerHTML = '<option value="" disabled selected>— No POs for this location —</option>';
+      } else if (locationPOs.length === 1) {
+        const po = locationPOs[0];
+        poSelect.innerHTML = `<option value="${po.po_number}" selected>${po.po_number} (${po.days} days)</option>`;
+        rpInput.value = po.reporting_person || '';
+      } else {
+        poSelect.innerHTML = '<option value="" disabled selected>— Select PO Number —</option>';
+        locationPOs.forEach(po => {
+          const opt = document.createElement('option');
+          opt.value = po.po_number;
+          opt.textContent = `${po.po_number} (${po.days} days)`;
+          poSelect.appendChild(opt);
+        });
+      }
+    }
+
+    // Update GPS status strip
+    if (locObj) {
+      if (hasCoords) {
+        setGpsStatus('📍', `GPS verification will run when you submit with "Present" for <strong>${val}</strong>.`, '#93c5fd', false);
+        const strip = document.getElementById('gps-strip');
+        if (strip) strip.style.background = 'rgba(37, 99, 235, 0.05)';
+      } else {
+        locationVerified = false;
+        setGpsStatus('⚠️', `GPS coordinates not configured for <strong>${val}</strong>. Please enter them below.`, '#fde68a', false);
+        const strip = document.getElementById('gps-strip');
+        if (strip) strip.style.background = 'rgba(245, 158, 11, 0.05)';
+      }
+    }
+
+    // Show zone text box if no zones available for manual entry
+    const zoneTextEl = document.getElementById('manual_zone_text');
+    if (zoneTextEl) {
+      const zoneSelect = document.getElementById('manual_zone');
+      const hasZones = zoneSelect && zoneSelect.options.length > 1;
+      zoneTextEl.style.display = hasZones ? 'none' : 'block';
+    }
+  }
+  </script>
+  {% endif %}
+
+  <!-- Stats Row -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#eff6ff;">📊</div>
+      <div>
+        <div class="stat-label">Total Records</div>
+        <div class="stat-value" style="color:var(--accent2);">{{ records|length }}</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#ecfdf5;">✅</div>
+      <div>
+        <div class="stat-label">Present Days</div>
+        <div class="stat-value" style="color:var(--present);">{{ present_count }}</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#fef2f2;">❌</div>
+      <div>
+        <div class="stat-label">Absent Days</div>
+        <div class="stat-value" style="color:var(--absent);">{{ absent_count }}</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#f5f3ff;">🕐</div>
+      <div>
+        <div class="stat-label">Half Days</div>
+        <div class="stat-value" style="color:var(--halfday);">{{ halfday_count }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Attendance History Table -->
+  <div class="card">
+    <div class="card-title">📅 Attendance History <span style="color:var(--muted); font-size:13px; font-weight:400;">(Last 60 records)</span></div>
+    {% if records %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Status</th>
+            <th>Check In</th>
+            <th>Check Out</th>
+            <th>Time Worked</th>
+            <th>Location</th>
+            <th>PO Number</th>
+            <th>PO Worked Days</th>
+            <th>Reporting Person</th>
+            <th>Zone</th>
+            <th>Marked By</th>
+            <th>Work Update</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rec in records %}
+          <tr>
+            <td>
+              <strong>{{ rec.date.strftime('%d %b %Y') }}</strong>
+              {% if rec.date.isoformat() == today %}
+              <span style="font-size:10px; background:var(--accent-light); color:var(--accent); border:1px solid #99f6e4; padding:2px 7px; border-radius:10px; margin-left:6px;">Today</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if rec.status == 'Present' %}
+              <span class="badge badge-present">✓ Present</span>
+              {% elif rec.status == 'Absent' %}
+              <span class="badge badge-absent">✗ Absent</span>
+              {% else %}
+              <span class="badge badge-halfday">½ Half Day</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px;">
+              {% if rec.check_in %}
+              <span style="font-weight:600; color:var(--text);">{{ rec.check_in }}</span>
+              {% else %}
+              <span style="color:var(--muted); font-size:12px;">—</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px;">
+              {% if rec.check_out %}
+              <span style="font-weight:600; color:#059669; background:#ecfdf5; border:1px solid #a7f3d0; padding:2px 8px; border-radius:10px; font-size:12px;">{{ rec.check_out }}</span>
+              {% else %}
+              <span style="color:var(--muted); font-size:12px;">—</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px; font-weight:700; color:var(--accent2);">
+              {{ rec.time_worked or '—' }}
+            </td>
+            <td style="font-size:13px;">
+              {% if rec.location %}
+              <span style="background:var(--accent-light); color:var(--accent); border:1px solid #99f6e4; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600;">📍 {{ rec.location }}</span>
+              {% else %}
+              <span style="color:var(--muted); font-size:12px;">—</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px; font-weight:600;">{{ rec.po_number or '—' }}</td>
+            <td style="font-size:13px; font-weight:700; color:var(--present); text-align:center;">{{ rec.po_worked_days or '—' }}</td>
+            <td style="font-size:13px;">{{ rec.reporting_person or '—' }}</td>
+            <td style="font-size:13px;">{{ rec.zone or '—' }}</td>
+            <td style="color:var(--muted); font-size:12px;">{{ rec.marked_by or '—' }}</td>
+            <td style="font-size:13px; min-width:180px;">
+              {% if rec.work_update %}
+                <div style="color:var(--text); font-weight:500; font-size:12px; margin-bottom:4px; white-space:pre-wrap; word-break:break-word;">{{ rec.work_update }}</div>
+                <button type="button" onclick="openWorkUpdateModal('{{ rec.id }}', '{{ rec.date.strftime('%d %b %Y') }}', {{ rec.work_update|tojson }})" style="background:none; border:none; color:var(--accent); font-size:11px; font-weight:700; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:3px;">✏️ Edit</button>
+              {% elif rec.status != 'Absent' %}
+                <button type="button" onclick="openWorkUpdateModal('{{ rec.id }}', '{{ rec.date.strftime('%d %b %Y') }}', '')" style="background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.2); color:#dc2626; font-size:11px; font-weight:700; cursor:pointer; padding:4px 8px; border-radius:6px; display:inline-flex; align-items:center; gap:4px;">➕ Add Update</button>
+              {% else %}
+                <span style="color:var(--muted); font-size:12px;">—</span>
+              {% endif %}
+            </td>
+            <td style="color:var(--muted); font-size:13px;">{{ rec.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <span class="icon">📭</span>
+      <h3>No Attendance Records Yet</h3>
+      <p>Your attendance history will appear here<br>once it has been recorded by your admin.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <!-- Not linked to employee -->
+  <div class="card">
+    <div class="empty-state">
+      <span class="icon">🔗</span>
+      <h3>Account Not Found</h3>
+      <p>No active employee record was found for your Employee ID.<br>
+         Please contact your admin to register your employee account.</p>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Work Update Modal for Anytime Editing -->
+  <div id="work-update-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.4); backdrop-filter:blur(5px); align-items:center; justify-content:center;">
+    <div style="background:#fff; border:1.5px solid var(--border); border-radius:20px; padding:28px 24px; max-width:480px; width:92%; box-shadow:0 20px 50px rgba(0,0,0,0.2); animation:fadeUp 0.2s ease-out;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div style="font-size:18px; font-weight:800; color:var(--text); display:flex; align-items:center; gap:8px;">📝 Daily Work Update</div>
+        <button type="button" onclick="closeWorkUpdateModal()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--muted); font-family:sans-serif;">&times;</button>
+      </div>
+      <div id="modal-work-update-date" style="font-size:13px; font-weight:700; color:var(--accent); margin-bottom:14px; background:var(--accent-light); padding:6px 12px; border-radius:8px; display:inline-block;"></div>
+      <form method="POST" action="{{ url_for('update_work_update') }}">
+        <input type="hidden" name="record_id" id="modal_work_update_rec_id">
+        <div style="margin-bottom:18px;">
+          <label class="form-label">Tasks / Progress Completed</label>
+          <textarea id="modal_work_update_text" name="work_update" required placeholder="Enter work update details for this day..." class="form-input" style="min-height:110px; resize:vertical; background:#ffffff; font-family:'Inter',sans-serif;"></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" onclick="closeWorkUpdateModal()" class="btn btn-secondary" style="padding:9px 18px; border-radius:10px; font-size:13px; cursor:pointer;">Cancel</button>
+          <button type="submit" class="btn" style="background:linear-gradient(135deg, var(--accent), #14b8a6); color:#fff; padding:9px 22px; border-radius:10px; font-weight:700; font-size:13px; border:none; cursor:pointer; box-shadow:0 4px 12px rgba(13,148,136,0.25);">Save Work Update</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function openWorkUpdateModal(recId, dateStr, currentText) {
+      document.getElementById('modal_work_update_rec_id').value = recId;
+      document.getElementById('modal-work-update-date').innerText = '📅 Date: ' + dateStr;
+      document.getElementById('modal_work_update_text').value = currentText || '';
+      document.getElementById('work-update-modal').style.display = 'flex';
+    }
+    function closeWorkUpdateModal() {
+      document.getElementById('work-update-modal').style.display = 'none';
+    }
+  </script>
+
+{% endblock %}

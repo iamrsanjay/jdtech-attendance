@@ -1,0 +1,303 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — JD TECH{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}{{ today }} · Real-time overview{% endblock %}
+
+{% block topbar_actions %}
+<div class="datetime-widget"
+  style="display: flex; align-items: center; gap: 16px; background: var(--surface); border: 1px solid var(--border); padding: 8px 16px; border-radius: 12px; box-shadow: var(--shadow-sm); backdrop-filter: blur(8px);">
+  <div
+    style="display: flex; align-items: center; gap: 8px; border-right: 1px solid var(--border); padding-right: 16px;">
+    <span style="font-size: 18px;">📅</span>
+    <div style="display: flex; flex-direction: column;">
+      <span id="live-date" style="font-size: 13px; font-weight: 700; color: var(--text);">{{ today }}</span>
+      <span id="live-day"
+        style="font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px;">--</span>
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <span style="font-size: 18px; animation: pulse 2s infinite; display: inline-block;">🕒</span>
+    <div style="display: flex; flex-direction: column;">
+      <span id="live-time"
+        style="font-size: 16px; font-weight: 800; color: var(--accent); letter-spacing: 0.5px; white-space: nowrap;">--:--:--</span>
+      <span id="live-tz"
+        style="font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Local Time</span>
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes pulse {
+    0% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.08);
+      opacity: 0.8;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .datetime-widget {
+      padding: 6px 10px;
+      gap: 8px;
+    }
+    .datetime-widget span[id="live-day"],
+    .datetime-widget span[id="live-tz"] {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  function updateClock() {
+    const now = new Date();
+
+    // Format Time: HH:MM:SS AM/PM
+    let hours = now.getHours();
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    const timeStr = String(hours).padStart(2, '0') + ':' + minutes + ':' + seconds + ' ' + ampm;
+
+    // Format Date: Monday, May 25, 2026
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+    const dayName = days[now.getDay()];
+    const monthName = months[now.getMonth()];
+    const dateNum = now.getDate();
+    const year = now.getFullYear();
+    const dateStr = monthName + ' ' + dateNum + ', ' + year;
+
+    const timeEl = document.getElementById('live-time');
+    const dateEl = document.getElementById('live-date');
+    const dayEl = document.getElementById('live-day');
+
+    if (timeEl) timeEl.textContent = timeStr;
+    if (dateEl) dateEl.textContent = dateStr;
+    if (dayEl) dayEl.textContent = dayName;
+  }
+
+  // Run immediately and then every second
+  updateClock();
+  setInterval(updateClock, 1000);
+</script>
+{% endblock %}
+
+
+{% block content %}
+<div class="grid grid-3" style="margin-bottom:24px;">
+  <div class="stat-card blue">
+    <div class="stat-icon">👥</div>
+    <div class="stat-label">Total Employees</div>
+    <div class="stat-value" id="val-total">{{ total }}</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon">✅</div>
+    <div class="stat-label">Present Today</div>
+    <div class="stat-value" id="val-present">{{ present }}</div>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-icon">❌</div>
+    <div class="stat-label">Absent Today</div>
+    <div class="stat-value" id="val-absent">{{ absent }}</div>
+  </div>
+</div>
+
+<div class="grid grid-2" style="gap:24px;">
+  <!-- Trend chart -->
+  <div class="card">
+    <div class="card-title">📉 7-Day Attendance Trend</div>
+    <div style="display:flex; align-items:flex-end; gap:12px; height:140px; padding-top:16px;">
+      {% for t in trend %}
+      <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px;">
+        {% set raw_pct = (t.present / total * 100) if total > 0 else 0 %}
+        {% set pct = 100 if raw_pct > 100 else raw_pct %}
+        {% set h = [pct * 1.2, 4] | max %}
+        <div style="font-size:11px; color:var(--accent); font-weight:700;">{{ t.present }}</div>
+        <div
+          style="width:100%; height:{{ h }}px; background:linear-gradient(to top,var(--accent),#2563eb); border-radius:4px 4px 0 0; min-height:4px; transition:height .4s;">
+        </div>
+        <div style="font-size:10px; color:var(--muted);">{{ t.date[5:] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Attendance breakdown -->
+  <div class="card">
+    <div class="card-title">🎯 Today's Breakdown</div>
+    {% if total > 0 %}
+    {% set p_pct = (present / total * 100) | round(1) %}
+    {% set a_pct = (absent / total * 100) | round(1) %}
+    {% set n_pct = (not_marked / total * 100) | round(1) %}
+    <div style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:5px;">
+        <span>Present</span><span style="color:var(--present); font-weight:700;" id="pct-txt-present">{{ p_pct }}%</span>
+      </div>
+      <div style="background:var(--surface2); border-radius:4px; height:8px;">
+        <div id="bar-present"
+          style="width:{{ p_pct }}%; height:100%; background:var(--present); border-radius:4px; transition:width .4s;">
+        </div>
+      </div>
+    </div>
+    <div style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:5px;">
+        <span>Absent</span><span style="color:var(--absent); font-weight:700;" id="pct-txt-absent">{{ a_pct }}%</span>
+      </div>
+      <div style="background:var(--surface2); border-radius:4px; height:8px;">
+        <div id="bar-absent"
+          style="width:{{ a_pct }}%; height:100%; background:var(--absent); border-radius:4px; transition:width .4s;">
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div style="text-align:center; padding: 24px 0;">
+      <div style="font-size:32px; margin-bottom:8px;">👥</div>
+      <p style="color:var(--text); font-size:14px; font-weight: 600; margin-bottom: 4px;">No Employees Found</p>
+      <p style="color:var(--muted); font-size:12px;">Add employees to view the breakdown.</p>
+    </div>
+    {% endif %}
+    <div style="margin-top:18px;">
+      <a href="{{ url_for('mark_attendance') }}" class="btn btn-primary btn-sm">Mark Today's Attendance →</a>
+    </div>
+  </div>
+</div>
+
+<!-- Recent activity -->
+<div class="card" style="margin-top:24px;">
+  <div class="card-title">🕐 Recent Attendance Records</div>
+  {% if recent %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th>Department</th>
+          <th>Date</th>
+          <th>Status</th>
+          <th>Location</th>
+          <th>PO Number</th>
+          <th>PO Worked Days</th>
+          <th>Time Worked</th>
+          <th>Reporting Person</th>
+        </tr>
+      </thead>
+      <tbody id="recent-table-body">
+        {% for r in recent %}
+        <tr>
+          <td><strong>{{ r.full_name }}</strong><br><span style="color:var(--muted);font-size:12px;">{{ r.employee_id }}</span></td>
+          <td style="color:var(--muted);">{{ r.department }}</td>
+          <td style="color:var(--muted);">{{ r.date }}</td>
+          <td><span class="badge badge-{{ r.status | lower | replace(' ','') }}">{{ r.status }}</span></td>
+          <td>
+            {% if r.location %}
+            <span
+              style="background:rgba(0, 242, 254, 0.1); color:var(--accent); border:1px solid rgba(0, 242, 254, 0.2); padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600;">📍
+              {{ r.location }}</span>
+            {% else %}
+            <span style="color:var(--muted); font-size:12px;">—</span>
+            {% endif %}
+          </td>
+          <td style="color:var(--text); font-weight:600;">{{ r.po_number or '—' }}</td>
+          <td style="color:var(--present); font-weight:700;">{{ r.po_worked_days or '—' }}</td>
+          <td style="color:var(--accent2); font-weight:700;">{{ r.time_worked or '—' }}</td>
+          <td style="color:var(--muted);">{{ r.reporting_person or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div
+    style="text-align:center; padding:40px; position: relative; overflow: hidden; border-radius: 12px; background: var(--surface2); border: 1px dashed var(--border); margin: 16px;">
+    <div style="font-size:40px; margin-bottom:12px; animation: float 3s ease-in-out infinite;">📭</div>
+    <h4 style="color:var(--text); font-size:16px; margin-bottom:8px; font-weight:600;">No Recent Records</h4>
+    <p style="color:var(--muted); font-size:13px; max-width: 300px; margin: 0 auto;">There are no attendance records marked for today yet. When attendance is recorded, it will appear here in real-time.</p>
+  </div>
+  <style>
+    @keyframes float {
+      0% {
+        transform: translateY(0px);
+      }
+      50% {
+        transform: translateY(-8px);
+      }
+      100% {
+        transform: translateY(0px);
+      }
+    }
+  </style>
+  {% endif %}
+</div>
+</div>
+
+<script>
+  // Live Auto-Refresh Script
+  function refreshStats() {
+    fetch("{{ url_for('dashboard_stats') }}")
+      .then(res => res.json())
+      .then(data => {
+        // Update top cards
+        document.getElementById('val-total').textContent = data.total;
+        document.getElementById('val-present').textContent = data.present;
+        document.getElementById('val-absent').textContent = data.absent;
+
+        // Update progress bars
+        if (data.total > 0) {
+          const p_pct = (data.present / data.total * 100).toFixed(1);
+          const a_pct = (data.absent / data.total * 100).toFixed(1);
+
+          const b_p = document.getElementById('bar-present');
+          if (b_p) b_p.style.width = p_pct + '%';
+          const t_p = document.getElementById('pct-txt-present');
+          if (t_p) t_p.textContent = p_pct + '%';
+
+          const b_a = document.getElementById('bar-absent');
+          if (b_a) b_a.style.width = a_pct + '%';
+          const t_a = document.getElementById('pct-txt-absent');
+          if (t_a) t_a.textContent = a_pct + '%';
+        }
+
+        // Update table
+        const tbody = document.getElementById('recent-table-body');
+        if (tbody && data.recent.length > 0) {
+          tbody.innerHTML = data.recent.map(r => {
+            let loc = r.location || '';
+            let locBadge = '<span style="color:var(--muted);font-size:12px;">—</span>';
+            if (loc) {
+              locBadge = '<span style="background:rgba(0, 242, 254, 0.1); color:var(--accent); border:1px solid rgba(0, 242, 254, 0.2); padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600;">📍 ' + loc + '</span>';
+            }
+            let poNum = r.po_number || '—';
+            let poWorkedDays = r.po_worked_days || '—';
+            let timeWorked = r.time_worked || '—';
+            let repPerson = r.reporting_person || '—';
+            return '<tr>' +
+              '<td><strong>' + r.full_name + '</strong><br><span style="color:var(--muted);font-size:12px;">' + r.employee_id + '</span></td>' +
+              '<td style="color:var(--muted);">' + r.department + '</td>' +
+              '<td style="color:var(--muted);">' + r.date + '</td>' +
+              '<td><span class="badge badge-' + r.status.toLowerCase().replace(' ', '') + '">' + r.status + '</span></td>' +
+              '<td>' + locBadge + '</td>' +
+              '<td style="color:var(--text); font-weight:600;">' + poNum + '</td>' +
+              '<td style="color:var(--present); font-weight:700;">' + poWorkedDays + '</td>' +
+              '<td style="color:var(--accent2); font-weight:700;">' + timeWorked + '</td>' +
+              '<td style="color:var(--muted);">' + repPerson + '</td>' +
+              '</tr>';
+          }).join('');
+        }
+      })
+      .catch(err => console.error('Error fetching live stats:', err));
+  }
+
+  // Fetch every 5 seconds
+  setInterval(refreshStats, 5000);
+</script>
+{% endblock %}

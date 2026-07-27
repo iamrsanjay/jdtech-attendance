@@ -1,0 +1,30 @@
+# =============================================================
+# JD TECH Attendance System — .gitignore
+# =============================================================
+
+# Environment & Secrets (NEVER commit these)
+.env
+credentials.json
+*.json.secret
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Local database (rebuilt from Google Sheets on startup)
+*.db
+*.sqlite
+*.sqlite3
+instance/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db

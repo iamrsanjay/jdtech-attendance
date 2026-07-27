@@ -1,0 +1,444 @@
+{% extends 'base.html' %}
+{% block title %}Manage Locations & POs — JD TECH{% endblock %}
+{% block page_title %}Locations & POs{% endblock %}
+{% block page_subtitle %}Manage work locations, GPS verification, and associated Purchase Orders (POs){% endblock %}
+
+{% block content %}
+<style>
+/* ─── Edit Modal ─────────────────────────────────────────── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,0.3); backdrop-filter: blur(6px);
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+  background: #fff; border: 1px solid #e2e8f0;
+  border-radius: 16px; padding: 28px; width: 100%; max-width: 480px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+  animation: fadeUp 0.25s ease;
+}
+@keyframes fadeUp { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+.modal-title { font-size:18px; font-weight:800; margin-bottom:20px; color:var(--accent); }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+
+/* ─── Location Card ─────────────────────────────────────────── */
+.branch-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(460px,1fr)); gap:24px; }
+.branch-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:14px; padding:20px;
+  position:relative; transition:all 0.25s; overflow:hidden;
+  display: flex; flex-direction: column; justify-content: space-between;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.branch-card:hover { border-color:var(--accent); transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.08); }
+.branch-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg, var(--accent), var(--accent2)); }
+.branch-name { font-size:17px; font-weight:700; margin-bottom:4px; color: var(--text); }
+.branch-coords { font-size:12px; color:var(--muted); font-family:monospace; letter-spacing:0.3px; margin-top:4px; }
+.branch-radius { display:inline-flex; align-items:center; gap:5px; margin-top:8px; font-size:11px; font-weight:600; background:#ccfbf1; border:1px solid #99f6e4; color:var(--accent); padding:4px 10px; border-radius:20px; }
+.branch-actions { display:flex; gap:8px; margin-top:18px; flex-wrap:wrap; border-top: 1px solid var(--border); padding-top:14px; }
+.branch-status { position:absolute; top:14px; right:14px; font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px; }
+.status-on  { background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; }
+.status-off { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
+
+/* ─── PO & RP List Styles ─────────────────────────────────── */
+.po-rp-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 16px; margin-top: 16px;
+}
+@media (max-width: 640px) {
+  .po-rp-grid { grid-template-columns: 1fr; }
+}
+.po-list-container {
+  background: var(--surface2); border-radius: 10px; padding: 12px;
+  border: 1px solid var(--border);
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.po-list-title { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; }
+.po-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 10px; border-radius: 8px; background: var(--surface);
+  margin-bottom: 6px; font-size: 13px; border: 1px solid var(--border);
+}
+.po-item:last-child { margin-bottom: 0; }
+.po-number { font-weight: 700; color: var(--text); }
+.po-progress { font-size: 11px; color: var(--muted); }
+.po-badge {
+  background: #ccfbf1; color: var(--accent);
+  padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;
+}
+.po-badge.complete {
+  background: #ecfdf5; color: #059669;
+}
+
+/* ─── Add Form ───────────────────────────────────────────── */
+.add-card {
+  background:#f0fdfa; border:1.5px dashed #99f6e4;
+  border-radius:14px; padding:24px; margin-bottom:28px;
+}
+.add-card-title { font-size:15px; font-weight:700; color:var(--accent); margin-bottom:18px; }
+.info-banner {
+  background:#eff6ff; border:1px solid #bfdbfe;
+  border-radius:10px; padding:14px 18px; margin-bottom:24px;
+  font-size:13px; color:#2563eb; display:flex; gap:10px; align-items:flex-start; line-height:1.5;
+}
+
+.toggle-switch-container {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  background: var(--surface2); padding: 12px; border-radius: 8px; border: 1px solid var(--border);
+}
+
+@media (max-width:640px) {
+  .form-row { grid-template-columns:1fr; }
+  .branch-grid { grid-template-columns:1fr; }
+}
+</style>
+
+<!-- Info banner -->
+<div class="info-banner">
+  <span>ℹ️</span>
+  <div>
+    Each work <strong>Location</strong> can hold multiple <strong>Purchase Orders (POs)</strong>.
+    If <strong>GPS Verification</strong> is enabled for a location, users must be within 200m (or custom radius) of its GPS coordinates to check in.
+    If GPS is disabled, employees can check in at that location from anywhere.
+  </div>
+</div>
+
+<!-- Add Location Form -->
+<div class="add-card">
+  <div class="add-card-title">➕ Add New Work Location</div>
+  <form method="POST" id="addBranchForm">
+    <input type="hidden" name="action" value="add">
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">
+      <div class="form-group" style="margin:0;">
+        <label>Customer Name</label>
+        <input type="text" name="name" id="add_name" placeholder="e.g. Amararja" required style="width:100%;">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Zone(s) <span style="font-size:10px; color:var(--muted); font-weight:400; text-transform:none;">(Comma-separated list, e.g. ABD 1, ABD 2)</span></label>
+        <input type="text" name="zone" id="add_zone" placeholder="e.g. ABD 1, ABD2" required style="width:100%;">
+      </div>
+    </div>
+
+    <!-- Toggle GPS Switch -->
+    <div class="toggle-switch-container">
+      <input type="checkbox" name="gps_enabled" id="add_gps_enabled" onchange="toggleGPSFields(this, 'add_gps_section')" style="width:auto; cursor:pointer; height:20px; width:20px;">
+      <label for="add_gps_enabled" style="font-weight:700; color:var(--text); cursor:pointer; margin:0;">🛰️ Enable GPS verification for this location</label>
+    </div>
+
+    <!-- GPS Fields wrapper (Hidden by default) -->
+    <div id="add_gps_section" style="display:none; animation: fadeUp 0.25s ease; border-top: 1px dashed var(--border); padding-top:16px; margin-bottom:16px;">
+      <!-- Paste from Google Maps helper -->
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">📋 Paste Coordinates from Google Maps</label>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input type="text" id="paste_coords" placeholder="e.g. 13.082680, 80.270718" style="flex:1; padding:9px 12px; font-size:13px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:monospace; outline:none;">
+          <button type="button" onclick="parsePastedCoords()" style="padding:9px 16px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; border:none; background:var(--accent); color:#fff; white-space:nowrap;">Parse</button>
+          <button type="button" onclick="useMyLocation()" id="useLocBtn" style="padding:9px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid var(--border); background:var(--surface2); color:var(--text); white-space:nowrap;">📡 Auto GPS</button>
+        </div>
+      </div>
+
+      <!-- Coordinate inputs -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:end;">
+        <div class="form-group" style="margin:0;">
+          <label>Latitude</label>
+          <input type="number" name="latitude" id="add_lat" step="0.000001" placeholder="13.082680">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Longitude</label>
+          <input type="number" name="longitude" id="add_lon" step="0.000001" placeholder="80.270718">
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <button type="submit" class="btn btn-primary">➕ Add Location</button>
+    </div>
+  </form>
+</div>
+
+<!-- Location Cards -->
+<div class="branch-grid">
+  {% for b in branches %}
+  <div class="branch-card">
+    <div>
+      <span class="branch-status {% if b.gps_enabled %}status-on{% else %}status-off{% endif %}">
+        {% if b.gps_enabled %}🛰️ GPS Active{% else %}🌐 GPS Bypassed{% endif %}
+      </span>
+      <div class="branch-name">📍 {{ b.customer_name }}</div>
+      {% if b.zone %}
+      <div style="font-size:13px; color:var(--muted); margin-top:2px; font-weight:600; display:flex; align-items:center; gap:4px;">🔲 <span>Zones: {{ b.zone }}</span></div>
+      {% endif %}
+      
+      {% if b.gps_enabled %}
+      <div class="branch-coords">{{ '%.6f' % b.latitude if b.latitude else '0.0' }}, {{ '%.6f' % b.longitude if b.longitude else '0.0' }}</div>
+      <div class="branch-radius">⭕ 200 m radius</div>
+      {% else %}
+      <div style="font-size:12px; color:var(--muted); margin-top:6px;">No GPS restriction applied</div>
+      {% endif %}
+
+      {% if b.added_by %}
+      <div style="font-size:12px; color:var(--muted); margin-top:4px;">👤 Added By: <strong style="color:var(--text);">{{ b.added_by }}</strong></div>
+      {% endif %}
+
+      <!-- POs List -->
+      <div class="po-list-container" style="margin-top:16px;">
+        <div>
+          <div class="po-list-title">📦 Purchase Orders (POs)</div>
+          {% if b.pos %}
+            {% for po in b.pos %}
+            <div class="po-item" style="flex-direction: column; align-items: stretch; gap: 4px; padding: 10px; margin-bottom: 8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <span style="font-size:10px; background:#dbeafe; border:1px solid #93c5fd; color:#2563eb; padding:1px 6px; border-radius:10px; margin-right:4px; font-weight:700;">{{ po.zone }}</span>
+                  <span class="po-number">{{ po.number }}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <div class="po-progress">Days: <strong>{{ po.days_needed }}</strong> (worked {{ po.days_worked }})</div>
+                  <!-- Delete PO -->
+                  <form method="POST" style="margin:0;" onsubmit="return confirm('Delete PO \'{{ po.number|e }}\'?');">
+                    <input type="hidden" name="action" value="delete_po">
+                    <input type="hidden" name="po_id" value="{{ po.id }}">
+                    <button type="submit" style="background:none; border:none; color:#ef4444; font-size:12px; cursor:pointer; padding:2px;">🗑️</button>
+                  </form>
+                </div>
+              </div>
+              <div style="font-size:11px; color:var(--muted); display:flex; justify-content:space-between; align-items:center; border-top:1px dashed var(--border); padding-top:4px;">
+                <span>Rep. Person: <strong>{{ po.reporting_person or '—' }}</strong></span>
+                {% if po.days_needed == 'LS' %}
+                <span class="po-badge complete">Lumpsum</span>
+                {% elif po.days_worked >= (po.days_needed|int) %}
+                <span class="po-badge complete">Complete</span>
+                {% else %}
+                <span class="po-badge">Active</span>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div style="font-size:11px; color:var(--muted); font-style:italic; padding: 10px 0;">No POs added yet</div>
+          {% endif %}
+        </div>
+
+        <!-- Add PO Inline Form -->
+        <form method="POST" style="margin-top:12px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; border-top:1px solid var(--border); padding-top:10px;">
+          <input type="hidden" name="action" value="add_po">
+          <input type="hidden" name="location_id" value="{{ b.id }}">
+          
+          <select name="zone" required style="width:100%; padding:6px 8px; font-size:12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none; font-family:'Inter',sans-serif;">
+            <option value="" disabled selected>— Select Zone —</option>
+            {% for z in b.zone.split(',') %}
+              {% if z.strip() %}
+              <option value="{{ z.strip() }}">{{ z.strip() }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+          <input type="text" name="po_number" placeholder="PO Number" required style="width:100%; padding:6px 8px; font-size:12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+          <input type="text" name="days_needed" placeholder="Days (e.g. 30, LS)" required style="width:100%; padding:6px 8px; font-size:12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+          <input type="text" name="reporting_person" placeholder="Reporting Person" required style="width:100%; padding:6px 8px; font-size:12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+          
+          <button type="submit" class="btn btn-primary" style="grid-column: span 2; padding:8px; font-size:11px; font-weight:700; border-radius:6px; font-family:'Syne',sans-serif; text-transform:uppercase;">+ Add PO Mapping</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Location Actions -->
+    <div class="branch-actions">
+      <!-- Edit Location -->
+      <button class="btn btn-secondary btn-sm"
+        onclick="openEditModal({{ b.id }}, '{{ b.customer_name|replace("'","\\'")|e }}', '{{ b.zone|replace("'","\\'")|e }}', {{ 'true' if b.gps_enabled else 'false' }}, {{ b.latitude or 0.0 }}, {{ b.longitude or 0.0 }})">
+        ✏️ Edit Location
+      </button>
+      
+      <!-- Toggle GPS -->
+      <form method="POST" style="margin:0;">
+        <input type="hidden" name="action" value="toggle">
+        <input type="hidden" name="location_id" value="{{ b.id }}">
+        <button type="submit" class="btn btn-secondary btn-sm">
+          {% if b.gps_enabled %}⏸ Disable GPS{% else %}▶ Enable GPS{% endif %}
+        </button>
+      </form>
+
+      <!-- Delete Location -->
+      <form method="POST" style="margin:0;"
+        onsubmit="return confirm('Delete location \'{{ b.customer_name|e }}\' and all associated POs? This cannot be undone.');">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="location_id" value="{{ b.id }}">
+        <button type="submit" class="btn btn-danger btn-sm">🗑 Delete</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-branches" style="grid-column:1/-1;">
+    <span class="icon">📍</span>
+    <p style="font-size:15px; margin-bottom:8px; color:var(--text); font-family:'Syne',sans-serif; font-weight:700;">No locations added yet</p>
+    <p>Add your first work location using the form above.</p>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal-box">
+    <div class="modal-title">✏️ Edit Work Location</div>
+    <form method="POST" id="editBranchForm">
+      <input type="hidden" name="action" value="edit">
+      <input type="hidden" name="location_id" id="edit_location_id">
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">
+        <div class="form-group" style="margin:0;">
+          <label>Customer Name</label>
+          <input type="text" name="name" id="edit_name" required style="width:100%;">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Zone(s)</label>
+          <input type="text" name="zone" id="edit_zone" required style="width:100%;">
+        </div>
+      </div>
+
+      <!-- Toggle GPS switch in Edit -->
+      <div class="toggle-switch-container">
+        <input type="checkbox" name="gps_enabled" id="edit_gps_enabled" onchange="toggleGPSFields(this, 'edit_gps_section')" style="width:auto; cursor:pointer; height:20px; width:20px;">
+        <label for="edit_gps_enabled" style="font-weight:700; color:var(--text); cursor:pointer; margin:0;">🛰️ Enable GPS verification</label>
+      </div>
+
+      <div id="edit_gps_section" style="display:none; border-top:1px dashed var(--border); padding-top:14px; margin-bottom:14px;">
+        <!-- Paste helper -->
+        <div class="form-group">
+          <label style="color:var(--accent);">📋 Paste Coordinates (Google Maps)</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="edit_paste_coords" placeholder="13.082680, 80.270718" style="flex:1; font-family:monospace; font-size:13px;">
+            <button type="button" onclick="parseEditPaste()" style="padding:8px 14px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; border:none; background:var(--accent); color:#000;">Parse</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Latitude</label>
+            <input type="number" name="latitude" id="edit_lat" step="0.000001">
+          </div>
+          <div class="form-group">
+            <label>Longitude</label>
+            <input type="number" name="longitude" id="edit_lon" step="0.000001">
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+        <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+        <button type="button" class="btn btn-secondary" onclick="useMyLocationEdit()">📡 Auto GPS</button>
+        <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function toggleGPSFields(checkbox, sectionId) {
+  const section = document.getElementById(sectionId);
+  const latInput = section.querySelector('input[name="latitude"]');
+  const lonInput = section.querySelector('input[name="longitude"]');
+  
+  if (checkbox.checked) {
+    section.style.display = 'block';
+    if (latInput) latInput.required = true;
+    if (lonInput) lonInput.required = true;
+  } else {
+    section.style.display = 'none';
+    if (latInput) latInput.required = false;
+    if (lonInput) lonInput.required = false;
+  }
+}
+
+function openEditModal(id, name, zone, gps_enabled, lat, lon) {
+  document.getElementById('edit_location_id').value = id;
+  document.getElementById('edit_name').value = name;
+  document.getElementById('edit_zone').value = zone;
+  document.getElementById('edit_lat').value = lat;
+  document.getElementById('edit_lon').value = lon;
+  document.getElementById('edit_paste_coords').value = '';
+  
+  const gpsCheckbox = document.getElementById('edit_gps_enabled');
+  gpsCheckbox.checked = gps_enabled;
+  toggleGPSFields(gpsCheckbox, 'edit_gps_section');
+  
+  document.getElementById('editModal').classList.add('open');
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('open');
+}
+
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditModal();
+});
+
+// Parse "lat, lon" string from Google Maps and fill the fields
+function parsePastedCoords() {
+  const raw = document.getElementById('paste_coords').value.trim();
+  const parts = raw.split(/[,\s]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const lat = parseFloat(parts[0]);
+    const lon = parseFloat(parts[1]);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      document.getElementById('add_lat').value = lat.toFixed(6);
+      document.getElementById('add_lon').value = lon.toFixed(6);
+      document.getElementById('paste_coords').style.borderColor = 'rgba(16,185,129,0.5)';
+      setTimeout(() => { document.getElementById('paste_coords').style.borderColor = ''; }, 2000);
+      return;
+    }
+  }
+  alert('Could not parse coordinates. Expected format: 13.082680, 80.270718');
+}
+
+function parseEditPaste() {
+  const raw = document.getElementById('edit_paste_coords').value.trim();
+  const parts = raw.split(/[,\s]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const lat = parseFloat(parts[0]);
+    const lon = parseFloat(parts[1]);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      document.getElementById('edit_lat').value = lat.toFixed(6);
+      document.getElementById('edit_lon').value = lon.toFixed(6);
+      return;
+    }
+  }
+  alert('Could not parse coordinates. Expected format: 13.082680, 80.270718');
+}
+
+function useMyLocation() {
+  const btn = document.getElementById('useLocBtn');
+  btn.textContent = '⏳ Detecting…'; btn.disabled = true;
+  if (!navigator.geolocation) {
+    alert('Auto GPS not available. Please paste coordinates from Google Maps.');
+    btn.textContent = '📡 Auto GPS'; btn.disabled = false;
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      document.getElementById('add_lat').value = pos.coords.latitude.toFixed(6);
+      document.getElementById('add_lon').value = pos.coords.longitude.toFixed(6);
+      btn.textContent = '✅ Done!'; btn.disabled = false;
+      setTimeout(() => { btn.textContent = '📡 Auto GPS'; }, 2500);
+    },
+    (err) => {
+      alert('GPS failed: ' + err.message + '\nPlease paste coordinates from Google Maps instead.');
+      btn.textContent = '📡 Auto GPS'; btn.disabled = false;
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function useMyLocationEdit() {
+  if (!navigator.geolocation) { alert('Auto GPS not available. Use the paste field above.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      document.getElementById('edit_lat').value = pos.coords.latitude.toFixed(6);
+      document.getElementById('edit_lon').value = pos.coords.longitude.toFixed(6);
+    },
+    (err) => alert('GPS failed: ' + err.message),
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+</script>
+{% endblock %}

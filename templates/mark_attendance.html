@@ -1,0 +1,298 @@
+{% extends 'base.html' %}
+{% block title %}View Attendance — JD TECH{% endblock %}
+{% block page_title %}View Attendance{% endblock %}
+{% block page_subtitle %}Review and manage daily employee attendance{% endblock %}
+
+{% block topbar_actions %}
+<form method="GET" style="display:flex; align-items:center; gap:10px;">
+  <input type="date" name="date" value="{{ selected_date }}" style="width:160px; padding:8px 12px; font-size:13px;">
+  <button type="submit" class="btn btn-secondary" style="padding:8px 16px; font-size:13px;">Load Date</button>
+</form>
+{% endblock %}
+
+{% block content %}
+<style>
+/* Mobile Responsive Mark Attendance */
+@media (max-width: 768px) {
+  .marking-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    text-align: center;
+  }
+  .marking-header-buttons {
+    display: flex !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .marking-header-buttons button, 
+  .marking-header-buttons a {
+    flex: 1 !important;
+    font-size: 11px !important;
+    padding: 8px 6px !important;
+    justify-content: center !important;
+  }
+  .table-wrap table {
+    min-width: 750px !important;
+  }
+  .topbar form {
+    width: 100% !important;
+    display: flex !important;
+  }
+  .topbar form input {
+    flex: 1 !important;
+  }
+}
+</style>
+
+<form method="POST">
+  <input type="hidden" name="date" value="{{ selected_date }}">
+
+  {% if employees %}
+  <div class="marking-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div style="font-size:14px; color:var(--muted);">
+      Marking attendance for <strong style="color:var(--accent);">{{ selected_date }}</strong> · {{ employees | length }} employees
+    </div>
+    <div class="marking-header-buttons" style="display:flex; gap:10px;">
+      <button type="button" onclick="markAll('Present')" class="btn btn-secondary btn-sm">✓ All Present</button>
+      <button type="button" onclick="markAll('Absent')" class="btn btn-secondary btn-sm">✗ All Absent</button>
+      <button type="submit" class="btn btn-primary btn-sm">💾 Save Attendance</button>
+    </div>
+  </div>
+
+  {% set departments = [] %}
+  {% for emp in employees %}
+    {% if emp.department not in departments %}
+      {% if departments.append(emp.department) %}{% endif %}
+    {% endif %}
+  {% endfor %}
+
+  {% for dept in departments %}
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+      🏢 {{ dept }}
+      <span style="font-size:12px; color:var(--muted); font-weight:400;">
+        ({{ employees | selectattr('department','eq',dept) | list | length }} employees)
+      </span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:20%;">Employee</th>
+            <th style="width:24%;">Status</th>
+            <th style="width:22%;">Check In / Out</th>
+            <th style="width:17%;">Location</th>
+            <th style="width:17%;">Notes <span style="font-size:10px; font-weight:400; color:var(--halfday); letter-spacing:0;">(Half Day only)</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in employees if emp.department == dept %}
+          {% set ex = existing.get(emp.employee_id) %}
+          {% set is_halfday = ex and ex.status == 'Half Day' %}
+          {% set is_absent = ex and ex.status == 'Absent' %}
+          <tr>
+            <td>
+              <strong>{{ emp.full_name }}</strong><br>
+              <span style="color:var(--muted);font-size:12px;">{{ emp.employee_id }} · {{ emp.position }}</span>
+            </td>
+            <td>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                {% for s, cls in [('Present','present'),('Absent','absent'),('Half Day','halfday')] %}
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; font-weight:600; color:var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; transition: all 0.2s;">
+                  <input type="radio" name="status_{{ emp.employee_id }}" value="{{ s }}"
+                    class="status-radio dept-{{ dept | replace(' ','_') }}"
+                    data-emp="{{ emp.employee_id }}"
+                    {% if ex and ex.status == s %}checked{% endif %}
+                    style="width:16px; height:16px; accent-color:var(--{{ cls }}); cursor:pointer; margin:0;"
+                    onchange="toggleNotes('{{ emp.employee_id }}', this.value)">
+                  <span style="color: var(--{{ cls }});">{{ s }}</span>
+                </label>
+                {% endfor %}
+              </div>
+            </td>
+            <td>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <input type="time" name="checkin_{{ emp.employee_id }}" id="checkin_{{ emp.employee_id }}"
+                  value="{{ ex.check_in if ex and ex.check_in else '' }}"
+                  {% if is_absent %}disabled{% endif %}
+                  style="padding:6px; font-size:12px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:6px; color:var(--text); width:80px; opacity:{% if is_absent %}0.5{% else %}1{% endif %}; cursor:{% if is_absent %}not-allowed{% else %}text{% endif %};">
+                <span style="color:var(--muted); font-size:12px;">to</span>
+                <input type="time" name="checkout_{{ emp.employee_id }}" id="checkout_{{ emp.employee_id }}"
+                  value="{{ ex.check_out if ex and ex.check_out else '' }}"
+                  {% if is_absent %}disabled{% endif %}
+                  style="padding:6px; font-size:12px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:6px; color:var(--text); width:80px; opacity:{% if is_absent %}0.5{% else %}1{% endif %}; cursor:{% if is_absent %}not-allowed{% else %}text{% endif %};">
+              </div>
+            </td>
+            <td>
+              <select id="location_{{ emp.employee_id }}" class="location-select" name="location_{{ emp.employee_id }}" {% if is_absent %}disabled{% endif %} style="width:100%; padding:9px 12px; font-size:13px; background: {% if is_absent %}var(--surface2){% else %}var(--surface){% endif %}; border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: {% if is_absent %}not-allowed{% else %}pointer{% endif %}; opacity: {% if is_absent %}0.5{% else %}1{% endif %};" onchange="handleLocationChange(this)">
+                <option value="" {% if not ex or not ex.location %}selected{% endif %}>— Select —</option>
+                <optgroup label="🏢 Office">
+                  <option value="Office" {% if ex and ex.location == 'Office' %}selected{% endif %}>Office</option>
+                  <option value="WFH" {% if ex and ex.location == 'WFH' %}selected{% endif %}>🏠 WFH</option>
+                </optgroup>
+                <optgroup label="📍 Client Sites">
+                  {% for site in sites %}
+                  <option value="{{ site }}" {% if ex and ex.location == site %}selected{% endif %}>{{ site }}</option>
+                  {% endfor %}
+                </optgroup>
+                <option value="__NEW__" style="color:var(--accent); font-weight:700;">➕ Add New Location...</option>
+              </select>
+            </td>
+            <td>
+              <input type="text" id="notes_{{ emp.employee_id }}" name="notes_{{ emp.employee_id }}"
+                value="{{ ex.notes if ex and ex.notes else '' }}"
+                placeholder="{% if is_halfday %}Reason for half day...{% else %}Select Half Day to enable{% endif %}"
+                {% if not is_halfday %}disabled{% endif %}
+                style="width:100%; padding:9px 14px; font-size:13px; background: {% if is_halfday %}rgba(139, 92, 246, 0.15){% else %}var(--surface2){% endif %}; border: 1px solid {% if is_halfday %}rgba(139, 92, 246, 0.3){% else %}var(--border){% endif %}; border-radius: 8px; color: {% if is_halfday %}var(--text){% else %}var(--muted){% endif %}; cursor: {% if is_halfday %}text{% else %}not-allowed{% endif %}; transition: all 0.25s;">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+    <button type="submit" class="btn btn-primary">💾 Save All Attendance</button>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center; padding:80px 20px; position: relative; overflow: hidden; border: 1px dashed var(--border); background: var(--surface2);">
+    <div style="position: absolute; top: -50px; left: 50%; transform: translateX(-50%); width: 250px; height: 250px; background: radial-gradient(circle, rgba(16,185,129,0.08), transparent 70%); border-radius: 50%; pointer-events: none;"></div>
+    
+    <div style="font-size:64px; margin-bottom:24px; text-shadow: 0 10px 20px rgba(0,0,0,0.3); animation: float 3s ease-in-out infinite;">🔍</div>
+    <h3 style="font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; margin-bottom: 16px; background: linear-gradient(135deg, var(--present), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">No Employees Available</h3>
+    <p style="color:var(--muted); margin: 0 auto 32px; max-width: 480px; font-size: 15px; line-height: 1.6;">
+      You need to add employees to the system before you can start marking attendance. An active workforce is required to generate daily attendance rosters.
+    </p>
+    
+    <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; max-width: 400px; margin: 0 auto 32px; text-align: left; display: flex; gap: 16px; align-items: flex-start;">
+      <div style="font-size: 24px;">💡</div>
+      <div>
+        <strong style="color: var(--text); font-size: 14px; display: block; margin-bottom: 6px;">Next Step: Add Employees</strong>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0;">Head over to the <strong>Employees</strong> section or click the button below to add your first employee. After that, this page will automatically display their daily attendance roster.</p>
+      </div>
+    </div>
+
+    <a href="{{ url_for('add_employee') }}" class="btn btn-primary" style="padding: 14px 28px; font-size: 15px; font-weight: 700; box-shadow: 0 4px 14px rgba(0, 242, 254, 0.4); border-radius: 10px;">+ Add Your First Employee</a>
+  </div>
+  <style>
+    @keyframes float {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-12px); }
+      100% { transform: translateY(0px); }
+    }
+  </style>
+  {% endif %}
+</form>
+
+<script>
+function markAll(status) {
+  document.querySelectorAll('.status-radio').forEach(radio => {
+    radio.checked = radio.value === status;
+    toggleNotes(radio.dataset.emp, status);
+  });
+}
+
+function toggleNotes(empId, status) {
+  const notesEl = document.getElementById('notes_' + empId);
+  const locationEl = document.getElementById('location_' + empId);
+
+  if (notesEl) {
+    const isHalfDay = status === 'Half Day';
+    notesEl.disabled = !isHalfDay;
+    notesEl.placeholder = isHalfDay ? 'Reason for half day...' : 'Select Half Day to enable';
+    notesEl.style.background    = isHalfDay ? 'rgba(139, 92, 246, 0.15)' : 'var(--surface2)';
+    notesEl.style.border        = isHalfDay ? '1px solid rgba(139, 92, 246, 0.3)' : '1px solid var(--border)';
+    notesEl.style.color         = isHalfDay ? 'var(--text)' : 'var(--muted)';
+    notesEl.style.cursor        = isHalfDay ? 'text' : 'not-allowed';
+    if (!isHalfDay) notesEl.value = '';
+  }
+
+  if (locationEl) {
+    const isAbsent = status === 'Absent';
+    locationEl.disabled = isAbsent;
+    locationEl.style.background = isAbsent ? 'rgba(0,0,0,0.2)' : 'rgba(255, 255, 255, 0.03)';
+    locationEl.style.cursor     = isAbsent ? 'not-allowed' : 'pointer';
+    locationEl.style.opacity    = isAbsent ? '0.5' : '1';
+    if (isAbsent) locationEl.value = '';
+  }
+
+  const checkinEl = document.getElementById('checkin_' + empId);
+  const checkoutEl = document.getElementById('checkout_' + empId);
+  if (checkinEl && checkoutEl) {
+    const isAbsent = status === 'Absent';
+    checkinEl.disabled = isAbsent;
+    checkoutEl.disabled = isAbsent;
+    checkinEl.style.opacity = isAbsent ? '0.5' : '1';
+    checkoutEl.style.opacity = isAbsent ? '0.5' : '1';
+    checkinEl.style.cursor = isAbsent ? 'not-allowed' : 'text';
+    checkoutEl.style.cursor = isAbsent ? 'not-allowed' : 'text';
+    if (isAbsent) {
+      checkinEl.value = '';
+      checkoutEl.value = '';
+    } else {
+      if (!checkinEl.value) {
+        checkinEl.value = '09:00';
+      }
+    }
+  }
+}
+
+function handleLocationChange(selectEl) {
+  if (selectEl.value === '__NEW__') {
+    const newLocName = prompt("Enter new location name:");
+    if (newLocName && newLocName.trim() !== "") {
+      const trimmed = newLocName.trim();
+      fetch('/api/locations/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name: trimmed })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          // Sync all dropdowns on this page with the new location!
+          document.querySelectorAll('.location-select').forEach(el => {
+            let optgroup = el.querySelector('optgroup[label="📍 Client Sites"]');
+            let optionExists = false;
+            for (let option of el.options) {
+              if (option.value === data.name) {
+                optionExists = true;
+                break;
+              }
+            }
+            if (!optionExists) {
+              const newOpt = document.createElement('option');
+              newOpt.value = data.name;
+              newOpt.textContent = data.name;
+              if (optgroup) {
+                optgroup.appendChild(newOpt);
+              } else {
+                el.insertBefore(newOpt, el.lastElementChild);
+              }
+            }
+          });
+          selectEl.value = data.name;
+        } else {
+          alert("Error: " + (data.error || "Could not add location"));
+          selectEl.value = "";
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        alert("Error adding location. Please try again.");
+        selectEl.value = "";
+      });
+    } else {
+      selectEl.value = "";
+    }
+  }
+}
+</script>
+{% endblock %}

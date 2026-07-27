@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}Employees — JD TECH{% endblock %}
+{% block page_title %}Employees{% endblock %}
+{% block page_subtitle %}{{ employees | length }} active employees{% endblock %}
+
+{% block topbar_actions %}
+{% if session.get('role') == 'admin' %}
+<a href="{{ url_for('add_employee') }}" class="btn btn-primary">+ Add Employee</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<style>
+/* Employees Mobile Responsive Overrides */
+@media (max-width: 768px) {
+  .table-wrap table {
+    min-width: 850px !important;
+  }
+  .topbar a {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+}
+</style>
+
+<div class="card">
+  <div class="table-wrap">
+    {% if employees %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Name</th><th>Role</th><th>Department</th><th>Position</th><th>Reporting To</th>
+          <th>Email</th><th>Phone</th><th>Join Date</th>
+          {% if session.get('role') == 'admin' %}<th>Action</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in employees %}
+        <tr>
+          <td><span style="font-family:monospace;color:var(--accent);font-size:12px;font-weight:700;">{{ emp.employee_id }}</span></td>
+          <td><strong>{{ emp.full_name }}</strong></td>
+          <td>
+            {% if emp.role == 'admin' %}
+            <span class="badge badge-admin">Admin</span>
+            {% elif emp.role == 'tl' %}
+            <span class="badge badge-tl">Team Lead</span>
+            {% else %}
+            <span class="badge badge-employee">Employee</span>
+            {% endif %}
+          </td>
+          <td><span style="color:var(--muted);">{{ emp.department }}</span></td>
+          <td style="color:var(--muted); font-size:13px;">{{ emp.position or '—' }}</td>
+          <td style="color:var(--accent); font-family:monospace; font-size:13px;">{{ emp.reporting_to or '—' }}</td>
+          <td style="color:var(--muted); font-size:13px;">{{ emp.email or '—' }}</td>
+          <td style="color:var(--muted); font-size:13px;">{{ emp.phone or '—' }}</td>
+          <td style="color:var(--muted); font-size:13px;">{{ emp.join_date or '—' }}</td>
+          {% if session.get('role') == 'admin' %}
+          <td style="display:flex; gap:6px; align-items:center;">
+            <a href="{{ url_for('add_employee', emp_id=emp.employee_id) }}" class="btn btn-secondary btn-sm" style="padding:4px 10px; font-size:12px; font-weight:600; text-decoration:none;">✏️ Edit</a>
+            <form method="POST" action="{{ url_for('delete_employee', emp_id=emp.employee_id) }}"
+                  onsubmit="return confirm('Remove {{ emp.full_name }}?');" style="margin:0;">
+              <button type="submit" class="btn btn-danger btn-sm" style="padding:4px 10px; font-size:12px;">Remove</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="text-align:center; padding:60px 20px; color:var(--text); background: var(--surface2); border-radius: 12px; border: 1px dashed var(--border); margin: 20px 0; position: relative; overflow: hidden;">
+      <div style="position: absolute; top: -50px; left: -50px; width: 150px; height: 150px; background: radial-gradient(circle, rgba(13,148,136,0.08), transparent 70%); border-radius: 50%;"></div>
+      <div style="position: absolute; bottom: -50px; right: -50px; width: 150px; height: 150px; background: radial-gradient(circle, rgba(59,130,246,0.08), transparent 70%); border-radius: 50%;"></div>
+      
+      <div style="font-size:56px; margin-bottom:20px; animation: float 3s ease-in-out infinite;">👥</div>
+      <h3 style="font-size: 24px; font-weight: 800; margin-bottom: 12px; color:var(--accent);">No Employees Found</h3>
+      <p style="color:var(--muted); max-width: 450px; margin: 0 auto 24px; font-size: 14px; line-height: 1.6;">
+        Your employee directory is currently empty. Get started by adding your first employee to the system. Once added, you can start tracking their attendance and generating reports.
+      </p>
+      
+      <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; max-width: 350px; margin: 0 auto 24px; text-align: left;">
+        <strong style="color: var(--text); font-size: 13px; display: block; margin-bottom: 8px;">💡 Pro Tips:</strong>
+        <ul style="list-style:none; padding:0; margin:0; font-size: 12px; color: var(--muted); line-height: 1.8;">
+          <li>✓ Ensure to use unique Employee IDs.</li>
+          <li>✓ Assign them to correct departments for accurate reporting.</li>
+          <li>✓ Employees can log in directly using their Employee ID.</li>
+        </ul>
+      </div>
+
+      {% if session.get('role') == 'admin' %}
+      <a href="{{ url_for('add_employee') }}" class="btn btn-primary" style="padding: 12px 24px; font-size: 14px; box-shadow: 0 4px 14px rgba(13,148,136,0.25);">+ Add Your First Employee</a>
+      {% endif %}
+    </div>
+    {% endif %}
+    <style>
+      @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+        100% { transform: translateY(0px); }
+      }
+    </style>
+  </div>
+</div>
+{% endblock %}

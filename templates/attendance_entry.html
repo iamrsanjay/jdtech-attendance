@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mark Attendance — JD TECH</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface2: #f1f5f9;
+      --border: #e2e8f0;
+      --accent: #0f766e;
+      --accent2: #2563eb;
+      --text: #0f172a;
+      --muted: #64748b;
+      --danger: #dc2626;
+      --present: #059669;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: #f3f4f6;
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Premium Live Aurora Background */
+    .live-bg {
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      z-index: 0;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(15, 118, 110, 0.04), transparent 40%),
+        radial-gradient(circle at 30% 30%, rgba(37, 99, 235, 0.04), transparent 40%),
+        radial-gradient(circle at 70% 70%, rgba(124, 58, 237, 0.04), transparent 40%);
+      filter: blur(80px);
+      animation: aurora 25s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+
+    @keyframes aurora {
+      0% {
+        transform: rotate(0deg) scale(1);
+      }
+
+      50% {
+        transform: rotate(180deg) scale(1.2);
+      }
+
+      100% {
+        transform: rotate(360deg) scale(1);
+      }
+    }
+
+    /* Texture Noise Overlay */
+    .noise-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+
+    /* JD TECH Watermark */
+    .watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-10deg);
+      font-family: 'Times New Roman', Times, serif;
+      font-weight: bold;
+      font-size: 28vw;
+      color: rgba(15, 23, 42, 0.015);
+      -webkit-text-stroke: 2px rgba(15, 23, 42, 0.02);
+      text-shadow: 4px 8px 16px rgba(0, 0, 0, 0.05);
+      z-index: 0;
+      pointer-events: none;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .entry-wrap {
+      width: 100%;
+      max-width: 520px;
+      padding: 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Logo bar */
+    .logo-bar {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .logo-bar img {
+      max-height: 56px;
+    }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px 36px;
+      box-shadow: 0 50px 100px rgba(15, 23, 42, 0.1), 0 0 40px rgba(15, 118, 110, 0.03);
+      backdrop-filter: blur(24px);
+    }
+
+    /* Greeting */
+    .greeting {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .greeting .hello {
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-weight: 600;
+    }
+
+    .greeting h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      margin-top: 6px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .greeting .date-label {
+      font-size: 14px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* Live clock */
+    .clock-wrap {
+      text-align: center;
+      margin: 20px 0 28px;
+    }
+
+    .clock {
+      font-family: 'Syne', sans-serif;
+      font-size: 52px;
+      font-weight: 800;
+      letter-spacing: -2px;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .clock-seconds {
+      font-size: 28px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .clock-ampm {
+      font-size: 18px;
+      color: var(--accent);
+      font-weight: 700;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* Status box */
+    .status-box {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 20px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .status-box.already {
+      background: rgba(16, 185, 129, .08);
+      border: 1px solid rgba(16, 185, 129, .25);
+      color: var(--present);
+    }
+
+    .status-box.pending {
+      background: rgba(59, 130, 246, .08);
+      border: 1px solid rgba(59, 130, 246, .25);
+      color: var(--accent2);
+    }
+
+    .status-icon {
+      font-size: 26px;
+      flex-shrink: 0;
+    }
+
+    .status-text strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .status-text span {
+      opacity: .8;
+      font-size: 13px;
+    }
+
+    /* Employee info strip */
+    .emp-info {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 28px;
+    }
+
+    .emp-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 18px;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .emp-name {
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .emp-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .emp-id-badge {
+      margin-left: auto;
+      background: rgba(0, 212, 170, .1);
+      border: 1px solid rgba(0, 212, 170, .2);
+      color: var(--accent);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .5px;
+    }
+
+    /* Buttons */
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 12px;
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: all .25s;
+      letter-spacing: .5px;
+    }
+
+    .btn-mark {
+      background: linear-gradient(135deg, var(--accent), #00b896);
+      color: #000;
+      box-shadow: 0 8px 24px rgba(0, 212, 170, .3);
+    }
+
+    .btn-mark:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(0, 212, 170, .45);
+    }
+
+    .btn-mark:active {
+      transform: translateY(0);
+    }
+
+    .btn-dash {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      margin-top: 12px;
+    }
+
+    .btn-dash:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* No-employee notice */
+    .no-emp-notice {
+      text-align: center;
+      padding: 24px;
+      background: var(--surface2);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      margin-bottom: 24px;
+    }
+
+    .no-emp-notice .icon {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
+
+    .no-emp-notice p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* Flash messages */
+    .alert {
+      padding: 12px 16px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .alert-success {
+      background: rgba(16, 185, 129, .1);
+      border: 1px solid rgba(16, 185, 129, .3);
+      color: #10b981;
+    }
+
+    .alert-error {
+      background: rgba(239, 68, 68, .1);
+      border: 1px solid rgba(239, 68, 68, .3);
+      color: #ef4444;
+    }
+
+    .alert-info {
+      background: rgba(59, 130, 246, .1);
+      border: 1px solid rgba(59, 130, 246, .3);
+      color: #3b82f6;
+    }
+
+    /* Pulse ring for the mark button */
+    @keyframes pulse-ring {
+      0% {
+        transform: scale(1);
+        opacity: .6;
+      }
+
+      80% {
+        transform: scale(1.12);
+        opacity: 0;
+      }
+
+      100% {
+        transform: scale(1.12);
+        opacity: 0;
+      }
+    }
+
+    .btn-wrap {
+      position: relative;
+    }
+
+    .pulse-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 12px;
+      border: 2px solid var(--accent);
+      animation: pulse-ring 2s cubic-bezier(.4, 0, .6, 1) infinite;
+      pointer-events: none;
+    }
+
+    @media (max-width: 480px) {
+      .card {
+        padding: 24px 16px !important;
+      }
+      .clock {
+        font-size: 42px !important;
+      }
+      .clock-seconds {
+        font-size: 20px !important;
+      }
+      .emp-info {
+        padding: 10px 12px !important;
+        gap: 10px !important;
+      }
+      .emp-avatar {
+        width: 36px !important;
+        height: 36px !important;
+        font-size: 14px !important;
+      }
+      .emp-name {
+        font-size: 13px !important;
+      }
+      .emp-id-badge {
+        padding: 2px 8px !important;
+        font-size: 10px !important;
+      }
+      .greeting h1 {
+        font-size: 22px !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="live-bg"></div>
+  <div class="noise-overlay"></div>
+  <div class="watermark">JD TECH</div>
+  <div class="entry-wrap">
+
+    <!-- Logo -->
+    <div class="logo-bar">
+      <img src="{{ url_for('static', filename='logo.jpg') }}" alt="JD TECH">
+    </div>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="alert alert-{{ cat }}">
+      {% if cat == 'success' %}✓{% elif cat == 'info' %}ℹ{% else %}✗{% endif %} {{ msg }}
+    </div>
+    {% endfor %}
+    {% endwith %}
+
+    <div class="card">
+
+      <!-- Greeting -->
+      <div class="greeting">
+        <div class="hello">Welcome back</div>
+        <h1>{{ session.get('full_name', 'User') }}</h1>
+        <div class="date-label" id="dateLabel">{{ today }}</div>
+      </div>
+
+      <!-- Live Clock -->
+      <div class="clock-wrap">
+        <div class="clock">
+          <span id="clockH">--</span>:<span id="clockM">--</span><span class="clock-seconds">:<span
+              id="clockS">--</span></span><span class="clock-ampm" id="clockAMPM"></span>
+        </div>
+      </div>
+
+      {% if employee %}
+      <!-- Employee card -->
+      <div class="emp-info">
+        <div class="emp-avatar">{{ employee.full_name[0] }}</div>
+        <div>
+          <div class="emp-name">{{ employee.full_name }}</div>
+          <div class="emp-meta">{{ employee.department }} · {{ employee.position or 'Employee' }}</div>
+        </div>
+        <span class="emp-id-badge">{{ employee.employee_id }}</span>
+      </div>
+      {% endif %}
+
+      {% if existing %}
+      <!-- Already marked -->
+      <div class="status-box already">
+        <div class="status-icon">✅</div>
+        <div class="status-text">
+          <strong>Attendance Already Recorded</strong>
+          <span>Check-in: {{ existing.check_in or '—' }} &nbsp;·&nbsp; Status: {{ existing.status }}</span>
+        </div>
+      </div>
+
+      {% if session.get('role') == 'admin' %}
+      <a href="{{ url_for('dashboard') }}" class="btn btn-dash">Go to Dashboard →</a>
+      {% else %}
+      <a href="{{ url_for('logout') }}" class="btn btn-dash">Sign Out</a>
+      {% endif %}
+
+      {% elif employee_id %}
+      <!-- Pending — show mark button -->
+      <div class="status-box pending">
+        <div class="status-icon">🕐</div>
+        <div class="status-text">
+          <strong>Attendance Not Yet Marked</strong>
+          <span>Click below to record your entry time for today.</span>
+        </div>
+      </div>
+      <form method="POST">
+        <div class="btn-wrap">
+          <div class="pulse-ring"></div>
+          <button type="submit" class="btn btn-mark" id="markBtn">Mark My Attendance</button>
+        </div>
+      </form>
+      {% if session.get('role') == 'admin' %}
+      <a href="{{ url_for('dashboard') }}" class="btn btn-dash">Skip — Go to Dashboard</a>
+      {% else %}
+      <a href="{{ url_for('logout') }}" class="btn btn-dash">Sign Out</a>
+      {% endif %}
+
+      {% else %}
+      <!-- No employee linked -->
+      <div class="no-emp-notice">
+        <div class="icon">🔗</div>
+        <p>Your account is not linked to an employee record.<br>
+          Ask an admin to link your account in <strong>User Management</strong>.</p>
+      </div>
+      {% if session.get('role') == 'admin' %}
+      <a href="{{ url_for('dashboard') }}" class="btn btn-dash">Continue to Dashboard →</a>
+      {% else %}
+      <a href="{{ url_for('logout') }}" class="btn btn-dash">Sign Out</a>
+      {% endif %}
+      {% endif %}
+
+    </div><!-- /card -->
+  </div><!-- /entry-wrap -->
+
+  <script>
+    // Live clock
+    function tick() {
+      const now = new Date();
+      let h = now.getHours();
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      document.getElementById('clockH').textContent = String(h).padStart(2, '0');
+      document.getElementById('clockM').textContent = m;
+      document.getElementById('clockS').textContent = s;
+      document.getElementById('clockAMPM').textContent = ampm;
+
+      // Nice date label
+      const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      document.getElementById('dateLabel').textContent = now.toLocaleDateString('en-IN', opts);
+    }
+    tick();
+    setInterval(tick, 1000);
+
+    // Disable mark button after click to prevent double submit
+    const btn = document.getElementById('markBtn');
+    if (btn) {
+      btn.closest('form').addEventListener('submit', () => {
+        btn.textContent = 'Saving…';
+        btn.disabled = true;
+        btn.style.opacity = '.7';
+      });
+    }
+  </script>
+</body>
+
+</html>
