@@ -467,7 +467,7 @@ def pull_from_sheets(app):
                                 zone=str(record.get('Zone') or '').strip() or None,
                                 po_number=str(record.get('PO Number') or '').strip() or None,
                                 reporting_person=str(record.get('Reporting Person') or '').strip() or None,
-                                po_worked_days=str(record.get('Days on PO') or '').strip() or None,
+                                po_worked_days=int(str(record.get('Days on PO') or record.get('po_worked_days') or '').strip()) if (str(record.get('Days on PO') or record.get('po_worked_days') or '').strip()).isdigit() else None,
                                 notes=str(record.get('Notes') or '').strip() or None,
                                 work_update=str(record.get('Work Update') or '').strip() or None,
                                 marked_by='Google Sheets Sync'
