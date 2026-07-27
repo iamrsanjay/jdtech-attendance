@@ -60,17 +60,18 @@ body {
 
 /* Sidebar */
 .sidebar {
-  width:250px; min-height:100vh;
+  width:250px; height:100vh; min-height:100vh; max-height:100vh;
   background: #ffffff;
   border-right:1px solid var(--border);
   display:flex; flex-direction:column;
   position:fixed; top:0; left:0; z-index:100;
   box-shadow: 4px 0 24px rgba(0,0,0,0.02);
+  overflow: hidden;
 }
-.sidebar-brand { padding:24px 20px; border-bottom:1px solid var(--border); text-align:center; }
+.sidebar-brand { padding:20px; border-bottom:1px solid var(--border); text-align:center; flex-shrink:0; }
 .brand-name { font-weight:800; font-size:22px; color:var(--accent); letter-spacing:-0.5px; }
 .brand-sub { font-size:11px; color:var(--muted); margin-top:2px; letter-spacing:2px; text-transform:uppercase; }
-.sidebar-nav { flex:1; padding:16px 0; }
+.sidebar-nav { flex:1; padding:16px 0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 .nav-section { padding:12px 20px 6px; font-size:10px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; font-weight:700; }
 .nav-item {
   display:flex; align-items:center; gap:10px; padding:11px 20px;
@@ -80,7 +81,7 @@ body {
 .nav-item:hover { color:var(--text); background: rgba(0,0,0,0.02); }
 .nav-item.active { color:var(--accent); background: var(--accent-light); border-left-color:var(--accent); font-weight:600; }
 .nav-item .icon { width:18px; text-align:center; font-size:16px; }
-.sidebar-footer { padding:16px 20px; border-top:1px solid var(--border); background:#f8fafc; }
+.sidebar-footer { padding:14px 18px; border-top:1px solid var(--border); background:#f8fafc; flex-shrink:0; }
 .user-badge { display:flex; align-items:center; gap:10px; }
 .avatar {
   width:36px; height:36px; border-radius:50%;
@@ -92,8 +93,13 @@ body {
 .user-info { flex:1; min-width:0; }
 .user-name { font-size:13px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .user-role { font-size:11px; color:var(--accent); text-transform:uppercase; letter-spacing:1px; font-weight:600; }
-.logout-link { font-size:12px; color:var(--muted); text-decoration:none; margin-top:8px; display:block; transition:color .2s; }
-.logout-link:hover { color:var(--danger); }
+.logout-link {
+  font-size:13px; font-weight:700; color:#dc2626; text-decoration:none; margin-top:10px;
+  display:flex; align-items:center; justify-content:center; gap:6px; padding:8px 14px;
+  background:rgba(220, 38, 38, 0.08); border:1px solid rgba(220, 38, 38, 0.2); border-radius:8px;
+  transition:all .2s; width:100%;
+}
+.logout-link:hover { background:#dc2626; color:#ffffff; }
 
 /* Main */
 .main { margin-left:250px; flex:1; display:flex; flex-direction:column; min-height:100vh; }
@@ -312,20 +318,25 @@ select option { background: #ffffff; color: var(--text); }
         <div class="user-role">{{ session.get('role','employee') }}</div>
       </div>
     </div>
-    <a href="{{ url_for('logout') }}" class="logout-link">⬤ Sign out</a>
+    <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sign out</a>
   </div>
 </aside>
 
 <div class="main">
   <div class="topbar">
-    <div style="display:flex; align-items:center; gap:14px;">
+    <div style="display:flex; align-items:center; gap:14px; flex:1;">
       <button class="menu-toggle" onclick="toggleMobileSidebar()">☰</button>
       <div>
         <div class="page-title">{% block page_title %}Dashboard{% endblock %}</div>
         <div class="page-subtitle">{% block page_subtitle %}{% endblock %}</div>
       </div>
     </div>
-    <div>{% block topbar_actions %}{% endblock %}</div>
+    <div style="display:flex; align-items:center; gap:12px;">
+      {% block topbar_actions %}{% endblock %}
+      <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm" style="white-space:nowrap; font-weight:700;" title="Sign out of system">
+        🚪 Sign out
+      </a>
+    </div>
   </div>
   <div class="content">
     {% with messages = get_flashed_messages(with_categories=true) %}
