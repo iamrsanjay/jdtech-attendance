@@ -4,10 +4,14 @@ Implements the same Flask-SQLAlchemy models and exposes the same public API
 as the SQL Server/MySQL version, syncing data with Google Sheets in the background.
 """
 
-import os
-import threading
+import os, time
 from datetime import date, datetime
 from flask import Flask
+
+# Enforce India Standard Time (IST)
+os.environ['TZ'] = 'Asia/Kolkata'
+if hasattr(time, 'tzset'):
+    time.tzset()
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import event
 import gspread

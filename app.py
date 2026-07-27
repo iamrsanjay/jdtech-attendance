@@ -1,8 +1,13 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, jsonify
 from sqlalchemy import func, case
-import io, hashlib, calendar, os
+import io, hashlib, calendar, os, time
 from datetime import date, datetime, timedelta
 from functools import wraps
+
+# Enforce India Standard Time (IST) for Linux/Cloud servers like Render
+os.environ['TZ'] = 'Asia/Kolkata'
+if hasattr(time, 'tzset'):
+    time.tzset()
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.units import cm
