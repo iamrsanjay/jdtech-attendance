@@ -256,23 +256,27 @@ ATTENDANCE_SHEET_HEADERS = [
 def sync_attendance_to_sheet(worksheet):
     """Push all attendance records to Google Sheets grouped date-wise."""
     try:
+        employees_map = {str(e.employee_id).strip(): e for e in Employee.query.all()}
         records = (
-            db.session.query(Attendance, Employee)
-            .join(Employee, Attendance.employee_id == Employee.employee_id)
-            .order_by(Attendance.date.asc(), Employee.employee_id.asc())
+            db.session.query(Attendance)
+            .order_by(Attendance.date.asc(), Attendance.employee_id.asc())
             .all()
         )
         values = [ATTENDANCE_SHEET_HEADERS]
         current_date = None
-        for att, emp in records:
+        for att in records:
             if att.date != current_date:
                 current_date = att.date
                 date_str = att.date.strftime('%d-%m-%Y') if att.date else ''
                 values.append([date_str] + [''] * (len(ATTENDANCE_SHEET_HEADERS) - 1))
+            
+            clean_emp_id = str(att.employee_id).strip() if att.employee_id else ''
+            emp_obj = employees_map.get(clean_emp_id)
+
             values.append([
-                emp.employee_id,
-                emp.full_name,
-                emp.department,
+                clean_emp_id,
+                emp_obj.full_name if (emp_obj and emp_obj.full_name) else '',
+                emp_obj.department if (emp_obj and emp_obj.department) else '',
                 att.status or '',
                 att.check_in or '',
                 att.check_out or '',
