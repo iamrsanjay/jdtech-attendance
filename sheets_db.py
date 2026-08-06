@@ -64,6 +64,7 @@ class Attendance(db.Model):
     po_worked_days   = db.Column(db.Integer, nullable=True)
     time_worked      = db.Column(db.String(20), nullable=True)
     work_update      = db.Column(db.Text, nullable=True)
+    visit_type       = db.Column(db.String(80), nullable=True)
 
 class Location(db.Model):
     __tablename__ = 'locations'
@@ -87,19 +88,29 @@ class PO(db.Model):
     reporting_person = db.Column(db.String(120), nullable=True)
     added_by         = db.Column(db.String(120), nullable=True)
 
+class Holiday(db.Model):
+    __tablename__ = 'holidays'
+    id          = db.Column(db.Integer, primary_key=True)
+    date        = db.Column(db.Date, nullable=False, unique=True)
+    name        = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    added_by    = db.Column(db.String(120), nullable=True)
+
 # Mapping table name to model and fields
 TABLE_TO_MODEL = {
     'employees': Employee,
     'attendance': Attendance,
     'locations': Location,
-    'pos': PO
+    'pos': PO,
+    'holidays': Holiday
 }
 
 TABLE_HEADERS = {
     'employees': ['id', 'employee_id', 'password', 'role', 'full_name', 'department', 'position', 'email', 'phone', 'join_date', 'active', 'reporting_to'],
-    'attendance': ['id', 'employee_id', 'date', 'status', 'check_in', 'check_out', 'time_worked', 'notes', 'marked_by', 'location', 'po_number', 'reporting_person', 'zone', 'po_worked_days', 'work_update'],
+    'attendance': ['id', 'employee_id', 'date', 'status', 'check_in', 'check_out', 'time_worked', 'notes', 'marked_by', 'location', 'po_number', 'reporting_person', 'zone', 'po_worked_days', 'work_update', 'visit_type'],
     'locations': ['Customer ID', 'Customer Name', 'Zone', 'Latitude', 'Longitude', 'Created At', 'Added By'],
-    'pos': ['S.no', 'Customer Name', 'Zone', 'Po Number', 'Days', 'Reporting Person', 'Added By']
+    'pos': ['S.no', 'Customer Name', 'Zone', 'Po Number', 'Days', 'Reporting Person', 'Added By'],
+    'holidays': ['Date', 'Holiday Name', 'Description', 'Added By']
 }
 
 import re
@@ -374,6 +385,13 @@ def get_sheet_row_vals(r, tablename, headers):
             r.reporting_person if r.reporting_person is not None else "",
             r.added_by if r.added_by is not None else ""
         ]
+    elif tablename == 'holidays':
+        return [
+            r.date.isoformat() if r.date else "",
+            r.name if r.name is not None else "",
+            r.description if r.description is not None else "",
+            r.added_by if r.added_by is not None else ""
+        ]
     else:
         row_vals = []
         for h in headers:
@@ -609,6 +627,24 @@ def pull_from_sheets(app):
                             days=str(days).strip() if days not in ("", None) else "",
                             reporting_person=str(rp).strip() if rp not in ("", None) else "",
                             added_by=str(added_by).strip() if added_by not in ("", None) else None
+                        ))
+                elif tablename == 'holidays':
+                    for record in records:
+                        rec_clean = {str(k).strip().lower(): v for k, v in record.items()}
+                        h_date_raw = rec_clean.get('date') or rec_clean.get('holiday date')
+                        h_name = rec_clean.get('holiday name') or rec_clean.get('name') or rec_clean.get('holiday')
+                        h_desc = rec_clean.get('description') or rec_clean.get('desc')
+                        h_added_by = rec_clean.get('added by') or rec_clean.get('added_by')
+
+                        h_date = parse_date_str(h_date_raw)
+                        if not h_date or not h_name:
+                            continue
+
+                        db.session.add(Holiday(
+                            date=h_date,
+                            name=str(h_name).strip(),
+                            description=str(h_desc).strip() if h_desc not in ("", None) else None,
+                            added_by=str(h_added_by).strip() if h_added_by not in ("", None) else None
                         ))
                 elif tablename == 'employees':
                     seen_emp_ids = set()

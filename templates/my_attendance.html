@@ -129,9 +129,10 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
   {% endif %}
 
   <!-- Today's Status Card -->
-  <div class="today-card">
-    <div class="today-left">
-      <div class="today-icon">
+  <div class="today-card" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:20px; padding:20px 28px;">
+    <!-- Column 1: Title & Icon -->
+    <div style="display:flex; align-items:center; gap:14px; min-width:180px;">
+      <div style="font-size:32px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; width:52px; height:52px; display:flex; align-items:center; justify-content:center;">
         {% if today_record %}
           {% if today_record.status == 'Present' %}✅
           {% elif today_record.status == 'Absent' %}❌
@@ -139,25 +140,34 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
         {% else %}📅{% endif %}
       </div>
       <div>
-        <div class="today-title">Today's Status</div>
-        <div class="today-date">{{ today }}</div>
+        <div style="font-size:16px; font-weight:800; color:var(--text);">Today's Status</div>
+        <div style="font-size:12px; color:var(--muted); font-weight:600;">{{ today }}</div>
       </div>
     </div>
-    <div style="display:flex; align-items:center; gap:24px;">
-      {% if today_record %}
-        <div class="check-times" style="text-align:left;">
-          <span style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:4px;">Location & Times</span>
-          {% if today_record.location %}
-            <span style="background:var(--accent-light); color:var(--accent); border:1px solid #99f6e4; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600; display:inline-block; margin-bottom:4px;">📍 {{ today_record.location }}</span>
-          {% endif %}
-          <div style="font-size:12px; color:var(--text);">
-            Check In: <strong>{{ today_record.check_in or '—' }}</strong>
-            {% if today_record.check_out %}
-            &nbsp;·&nbsp; Check Out: <strong style="color:#059669;">{{ today_record.check_out }}</strong>
-            {% endif %}
-          </div>
-        </div>
 
+    {% if today_record %}
+      <!-- Column 2: Work Location -->
+      <div style="flex:1; min-width:160px;">
+        <span style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; display:block; margin-bottom:4px;">Work Location</span>
+        {% if today_record.location %}
+          <span style="background:var(--accent-light); color:var(--accent); border:1px solid rgba(15,118,110,0.2); padding:5px 12px; border-radius:20px; font-size:13px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">📍 {{ today_record.location }}</span>
+        {% else %}
+          <span style="color:var(--muted); font-size:13px;">—</span>
+        {% endif %}
+      </div>
+
+      <!-- Column 3: Check In / Check Out Times -->
+      <div style="flex:1; min-width:180px;">
+        <span style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; display:block; margin-bottom:4px;">Shift Timings</span>
+        <div style="display:flex; align-items:center; gap:10px; font-size:13px;">
+          <div>In: <strong style="color:var(--text); font-size:14px;">{{ today_record.check_in or '—' }}</strong></div>
+          <div style="color:var(--muted);">|</div>
+          <div>Out: <strong style="color:{% if today_record.check_out %}#059669{% else %}var(--muted){% endif %}; font-size:14px;">{{ today_record.check_out or 'Active' }}</strong></div>
+        </div>
+      </div>
+
+      <!-- Column 4: Status Badge -->
+      <div style="display:flex; align-items:center; justify-content:flex-end;">
         {% if today_record.status == 'Present' %}
         <span class="status-pill pill-present">● Present</span>
         {% elif today_record.status == 'Absent' %}
@@ -165,10 +175,12 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
         {% else %}
         <span class="status-pill pill-halfday">● Half Day</span>
         {% endif %}
-      {% else %}
+      </div>
+    {% else %}
+      <div style="flex:1; display:flex; justify-content:flex-end;">
         <span class="status-pill pill-none">⏳ Not Yet Marked</span>
-      {% endif %}
-    </div>
+      </div>
+    {% endif %}
   </div>
 
   {% if today_record and today_record.status != 'Absent' %}
@@ -303,7 +315,7 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
             <option value="Work from home">Work from home</option>
             {% for loc in locations %}
             {% if loc.name and loc.name.strip() not in ['JD Tech', 'Work from home', 'JD TECH', 'Work From Home', 'WFH'] %}
-            <option value="{{ loc.name }}" data-gps="{{ loc.gps_enabled }}" data-lat="{{ loc.latitude or 0.0 }}" data-lon="{{ loc.longitude or 0.0 }}" data-radius="200">{{ loc.name }}</option>
+            <option value="{{ loc.name }}" data-gps="{{ loc.gps_enabled }}" data-lat="{{ loc.latitude or 0.0 }}" data-lon="{{ loc.longitude or 0.0 }}" data-radius="300">{{ loc.name }}</option>
             {% endif %}
             {% endfor %}
             <option value="__NEW__" style="color:var(--accent); font-weight:700;">➕ Add New Location...</option>
@@ -340,16 +352,29 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
           <select id="manual_zone" name="zone" class="form-select" onchange="handleZoneChange(this)">
             <option value="" disabled selected>— Select Zone —</option>
           </select>
-          <input type="text" id="manual_zone_text" name="zone_text" placeholder="Or type zone manually..." class="form-input" style="margin-top:8px;">
+          <input type="text" id="manual_zone_text" name="zone_text" placeholder="Or type zone manually..." class="form-input" style="margin-top:8px;" oninput="if(this.value.trim()){document.getElementById('manual_zone').selectedIndex=0;}">
         </div>
 
         <!-- PO Number Dropdown + manual entry -->
         <div>
           <label class="form-label">PO Number</label>
           <select id="manual_po" name="po_number" class="form-select" onchange="handlePOChange(this)">
-            <option value="" disabled selected>— Select PO (Choose Zone First) —</option>
+            <option value="" disabled selected>— Select PO Number —</option>
           </select>
-          <input type="text" id="manual_po_text" name="po_number_text" placeholder="Or type PO number manually..." class="form-input" style="margin-top:8px;">
+          <input type="text" id="manual_po_text" name="po_number_text" placeholder="Or type PO number manually..." class="form-input" style="margin-top:8px;" oninput="if(this.value.trim()){document.getElementById('manual_po').selectedIndex=0;}">
+        </div>
+
+        <!-- Visit Type Dropdown -->
+        <div>
+          <label class="form-label">Visit Type</label>
+          <select id="manual_visit_type" name="visit_type" class="form-select">
+            <option value="Manday" selected>Manday</option>
+            <option value="Lumpsum">Lumpsum</option>
+            <option value="Technical Training">Technical Training</option>
+            <option value="Site Support">Site Support</option>
+            <option value="JD">JD</option>
+            <option value="WFH">WFH</option>
+          </select>
         </div>
 
         <!-- Reporting Person (editable) -->
@@ -438,7 +463,7 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
 
   const LOCATION_CHECKING = {{ 'true' if location_checking_enabled else 'false' }};
   let locationVerified = false;
-  let _pendingLocation = { name: '', lat: 0, lon: 0, radius: 200 };
+  let _pendingLocation = { name: '', lat: 0, lon: 0, radius: 300 };
 
   function setGpsStatus(icon, text, borderColor, isError) {
     const strip = document.getElementById('gps-strip');
@@ -547,7 +572,7 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
         }
         callback(false);
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
     );
   }
 
@@ -622,7 +647,7 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
             const btn = document.getElementById('btn_submit_manual');
             if (btn) { btn.textContent = 'Verifying Location…'; btn.disabled = true; btn.style.opacity = '.7'; }
 
-            doLocationCheck(selectedLocation, latFloat, lonFloat, 200, function(ok) {
+            doLocationCheck(selectedLocation, latFloat, lonFloat, 300, function(ok) {
               if (ok) {
                 document.getElementById('manualAttendanceForm').submit();
               } else {
@@ -685,32 +710,18 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
 
     // Find all POs matching this customer + zone
     const matchedPOs = masterPOs.filter(p =>
-      cleanStr(p.customer_name) === cleanStr(locVal) && cleanStr(p.zone) === cleanStr(val)
+      cleanStr(p.customer_name) === cleanStr(locVal) && (!val || cleanStr(p.zone) === cleanStr(val))
     );
 
     const poSelect = document.getElementById('manual_po');
-    const rpInput  = document.getElementById('manual_reporting_person');
-    const poText   = document.getElementById('manual_po_text');
 
-    poSelect.innerHTML = '';
-    if (poText) poText.value = '';
-
-    if (matchedPOs.length === 0) {
-      poSelect.innerHTML = '<option value="" disabled selected>— No POs for this zone —</option>';
-    } else if (matchedPOs.length === 1) {
-      const po = matchedPOs[0];
-      poSelect.innerHTML = `<option value="${po.po_number}" selected>${po.po_number} (${po.days} days)</option>`;
-      if (!rpInput.value) rpInput.value = po.reporting_person || '';
-      if (poText) poText.value = po.po_number;
-    } else {
-      poSelect.innerHTML = '<option value="" disabled selected>— Select PO Number —</option>';
-      matchedPOs.forEach(po => {
-        const opt = document.createElement('option');
-        opt.value = po.po_number;
-        opt.textContent = `${po.po_number} (${po.days} days)`;
-        poSelect.appendChild(opt);
-      });
-    }
+    poSelect.innerHTML = '<option value="" disabled selected>— Select PO Number —</option>';
+    matchedPOs.forEach(po => {
+      const opt = document.createElement('option');
+      opt.value = po.po_number;
+      opt.textContent = `${po.po_number}${po.days ? ' (' + po.days + ' days)' : ''}`;
+      poSelect.appendChild(opt);
+    });
   }
 
   function captureCurrentGps() {
@@ -839,59 +850,37 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
     // Find all POs matching this customer/location
     const locationPOs = masterPOs.filter(p => cleanStr(p.customer_name) === cleanStr(val));
     
-    // Check if there are any zones in the POs or the location object
-    const poHasZones = locationPOs.some(p => p.zone && p.zone.trim() !== "");
-    const locHasZones = locObj && locObj.zones && locObj.zones.length > 0;
+    // Always show Zone selection and manual entry
+    if (zoneWrapper) zoneWrapper.style.display = 'block';
+    if (zoneSelect) zoneSelect.required = false;
     
-    if (locHasZones || poHasZones) {
-      // Show and require Zone selection
-      if (zoneWrapper) zoneWrapper.style.display = 'block';
-      if (zoneSelect) zoneSelect.required = true;
-      
-      // Get unique zones
-      const zones = new Set();
-      if (locObj && locObj.zones) {
-        locObj.zones.forEach(z => zones.add(z));
-      }
-      locationPOs.forEach(p => {
-        if (p.zone && p.zone.trim()) {
-          zones.add(p.zone.trim());
-        }
-      });
-      
-      zones.forEach(z => {
-        const opt = document.createElement('option');
-        opt.value = z;
-        opt.textContent = z;
-        if (zoneSelect) zoneSelect.appendChild(opt);
-      });
-      
-      if (poSelect) poSelect.innerHTML = '<option value="" disabled selected>— Choose Zone First —</option>';
-    } else {
-      // Hide and make Zone optional
-      if (zoneWrapper) zoneWrapper.style.display = 'none';
-      if (zoneSelect) {
-        zoneSelect.required = false;
-        zoneSelect.innerHTML = '<option value="" selected></option>'; // set dummy selected value
-      }
-
-      // Populate POs directly!
-      if (locationPOs.length === 0) {
-        poSelect.innerHTML = '<option value="" disabled selected>— No POs for this location —</option>';
-      } else if (locationPOs.length === 1) {
-        const po = locationPOs[0];
-        poSelect.innerHTML = `<option value="${po.po_number}" selected>${po.po_number} (${po.days} days)</option>`;
-        rpInput.value = po.reporting_person || '';
-      } else {
-        poSelect.innerHTML = '<option value="" disabled selected>— Select PO Number —</option>';
-        locationPOs.forEach(po => {
-          const opt = document.createElement('option');
-          opt.value = po.po_number;
-          opt.textContent = `${po.po_number} (${po.days} days)`;
-          poSelect.appendChild(opt);
-        });
-      }
+    // Get unique zones for this location
+    const zones = new Set();
+    if (locObj && locObj.zones) {
+      locObj.zones.forEach(z => zones.add(z));
     }
+    locationPOs.forEach(p => {
+      if (p.zone && p.zone.trim()) {
+        zones.add(p.zone.trim());
+      }
+    });
+    
+    const zoneArray = Array.from(zones);
+    zoneArray.forEach(z => {
+      const opt = document.createElement('option');
+      opt.value = z;
+      opt.textContent = z;
+      if (zoneSelect) zoneSelect.appendChild(opt);
+    });
+    
+    // Populate PO dropdown for this location
+    poSelect.innerHTML = '<option value="" disabled selected>— Select PO Number —</option>';
+    locationPOs.forEach(po => {
+      const opt = document.createElement('option');
+      opt.value = po.po_number;
+      opt.textContent = `${po.po_number}${po.zone ? ' (' + po.zone + ')' : ''}`;
+      poSelect.appendChild(opt);
+    });
 
     // Update GPS status strip
     if (locObj) {
@@ -907,12 +896,16 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
       }
     }
 
-    // Show zone text box if no zones available for manual entry
+    // Ensure manual text inputs remain visible and editable
     const zoneTextEl = document.getElementById('manual_zone_text');
     if (zoneTextEl) {
-      const zoneSelect = document.getElementById('manual_zone');
-      const hasZones = zoneSelect && zoneSelect.options.length > 1;
-      zoneTextEl.style.display = hasZones ? 'none' : 'block';
+      zoneTextEl.style.display = 'block';
+      zoneTextEl.disabled = false;
+    }
+    const poTextEl = document.getElementById('manual_po_text');
+    if (poTextEl) {
+      poTextEl.style.display = 'block';
+      poTextEl.disabled = false;
     }
   }
   </script>
@@ -965,6 +958,7 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
             <th>Time Worked</th>
             <th>Location</th>
             <th>PO Number</th>
+            <th>Visit Type</th>
             <th>PO Worked Days</th>
             <th>Reporting Person</th>
             <th>Zone</th>
@@ -1016,6 +1010,11 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
               {% endif %}
             </td>
             <td style="font-size:13px; font-weight:600;">{{ rec.po_number or '—' }}</td>
+            <td style="font-size:12px;">
+              <span style="background:rgba(99, 102, 241, 0.12); color:#6366f1; border:1px solid rgba(99, 102, 241, 0.25); padding:2px 8px; border-radius:6px; font-weight:600;">
+                {{ rec.visit_type or 'Manday' }}
+              </span>
+            </td>
             <td style="font-size:13px; font-weight:700; color:var(--present); text-align:center;">{{ rec.po_worked_days or '—' }}</td>
             <td style="font-size:13px;">{{ rec.reporting_person or '—' }}</td>
             <td style="font-size:13px;">{{ rec.zone or '—' }}</td>

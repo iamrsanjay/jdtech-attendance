@@ -14,7 +14,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from sheets_db import db, configure_app, pull_from_sheets, Employee, Attendance, Location, PO, parse_coordinate_str
+from sheets_db import db, configure_app, pull_from_sheets, trigger_background_sync, Employee, Attendance, Location, PO, Holiday, parse_coordinate_str
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'attendance_secret_key_2024')
@@ -28,62 +28,28 @@ def init_db():
         return
     # Schema check/migration for SQLite
     with app.app_context():
-        need_recreate = False
         try:
-            # If locations doesn't have the zone column, we must recreate
-            db.session.execute(db.text("SELECT zone FROM locations LIMIT 1"))
-        except Exception:
-            need_recreate = True
-            
-        try:
-            # If pos table is missing or doesn't have reporting_person column, recreate
-            db.session.execute(db.text("SELECT reporting_person FROM pos LIMIT 1"))
-        except Exception:
-            need_recreate = True
-        
-        try:
-            db.session.execute(db.text("SELECT zone FROM attendance LIMIT 1"))
-        except Exception:
-            need_recreate = True
+            db.create_all()
+        except Exception as e:
+            print(f"Error creating tables: {e}")
 
-        try:
-            db.session.execute(db.text("SELECT po_worked_days FROM attendance LIMIT 1"))
-        except Exception:
-            need_recreate = True
-
-        try:
-            db.session.execute(db.text("SELECT time_worked FROM attendance LIMIT 1"))
-        except Exception:
-            need_recreate = True
-
-        try:
-            db.session.execute(db.text("SELECT reporting_to FROM employees LIMIT 1"))
-        except Exception:
-            need_recreate = True
-
-        try:
-            db.session.execute(db.text("SELECT added_by FROM locations LIMIT 1"))
-        except Exception:
-            need_recreate = True
-
-        try:
-            db.session.execute(db.text("SELECT work_update FROM attendance LIMIT 1"))
-        except Exception:
-            need_recreate = True
-
-        try:
-            db.session.execute(db.text("SELECT added_by FROM pos LIMIT 1"))
-        except Exception:
-            need_recreate = True
-
-        if need_recreate:
-            print("Database schema mismatch detected. Dropping tables to recreate with new schema...")
+        # Safely migrate any missing columns in existing SQLite tables
+        columns_to_check = [
+            ("attendance", "visit_type", "VARCHAR(80)"),
+            ("holidays", "description", "VARCHAR(255)"),
+            ("holidays", "added_by", "VARCHAR(120)")
+        ]
+        for tbl, col, col_type in columns_to_check:
             try:
-                db.drop_all()
-            except Exception as e:
-                print(f"Error dropping tables: {e}")
+                db.session.execute(db.text(f"SELECT {col} FROM {tbl} LIMIT 1"))
+            except Exception:
+                db.session.rollback()
+                try:
+                    db.session.execute(db.text(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type}"))
+                    db.session.commit()
+                except Exception as ex:
+                    db.session.rollback()
 
-        db.create_all()
         pull_from_sheets(app)
     
         if 'mssql' in str(db.engine.url):
@@ -179,21 +145,31 @@ def calculate_time_worked(check_in, check_out):
 def recalculate_employee_po_worked_days(employee_id):
     if not employee_id:
         return
-    records = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.date.asc()).all()
-    po_counts = {}
-    for r in records:
-        if r.po_number:
-            po = r.po_number.strip()
-            if not po:
-                r.po_worked_days = None
-                continue
-            if r.status in ['Present', 'Half Day']:
-                po_counts[po] = po_counts.get(po, 0) + 1
-                r.po_worked_days = po_counts[po]
+    with db.session.no_autoflush:
+        records = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.date.asc()).all()
+        po_counts = {}
+        for r in records:
+            if r.po_number:
+                po = r.po_number.strip()
+                if not po:
+                    r.po_worked_days = None
+                    continue
+                visit = (r.visit_type or '').strip().lower()
+                if visit in ('site support', 'site-support') or ('site' in visit and 'support' in visit):
+                    r.po_worked_days = None
+                    continue
+                if r.status in ['Present', 'Half Day']:
+                    po_counts[po] = po_counts.get(po, 0) + 1
+                    r.po_worked_days = po_counts[po]
+                else:
+                    r.po_worked_days = None
             else:
                 r.po_worked_days = None
-        else:
-            r.po_worked_days = None
+
+        for po_num, count in po_counts.items():
+            po_obj = PO.query.filter_by(po_number=po_num).first()
+            if po_obj:
+                po_obj.worked_days = count
 
 @app.route('/')
 def index():
@@ -234,10 +210,6 @@ def login():
 def attendance_entry():
     return redirect(url_for('my_attendance'))
 
-    return render_template('attendance_entry.html',
-        today=today.isoformat(), existing=existing,
-        employee=employee, employee_id=employee_id)
-
 @app.route('/my-attendance', methods=['GET', 'POST'])
 @login_required
 def my_attendance():
@@ -248,25 +220,30 @@ def my_attendance():
         today       = date.today()
         today_record = None
 
-        pending_work_update_record = None
         if employee_id:
             employee = Employee.query.filter_by(employee_id=employee_id).first()
-            pending_work_update_record = Attendance.query.filter(
+
+        pending_work_update_record = None
+        if employee_id:
+            past_records = Attendance.query.filter(
                 Attendance.employee_id == employee_id,
                 Attendance.date < today,
                 Attendance.status.in_(['Present', 'Half Day']),
-                (Attendance.work_update == None) | (func.trim(Attendance.work_update) == '')
-            ).order_by(Attendance.date.desc()).first()
+                (Attendance.work_update == None) | (Attendance.work_update == '')
+            ).order_by(Attendance.date.asc()).all()
+            if past_records:
+                pending_work_update_record = past_records[0]
 
-        if request.method == 'POST' and employee:
+        if request.method == 'POST':
             action = request.form.get('action')
-            existing = Attendance.query.filter_by(
+            today_record = Attendance.query.filter_by(
                 employee_id=employee_id, date=today).first()
+            existing = today_record
 
             if action == 'clock_out':
                 if existing:
                     if existing.check_out:
-                        flash('Already clocked out today!', 'info')
+                        flash('Check-out already recorded for today!', 'info')
                     else:
                         now_time = datetime.now().strftime('%H:%M')
                         existing.check_out = now_time
@@ -295,11 +272,12 @@ def my_attendance():
                 return redirect(url_for('my_attendance'))
             else:
                 status           = request.form.get('status', 'Present')
-                location         = request.form.get('location', '')
-                po_number        = request.form.get('po_number', '').strip() or request.form.get('po_number_text', '').strip()
+                location         = request.form.get('location', '').strip()
+                po_number        = request.form.get('po_number_text', '').strip() or request.form.get('po_number', '').strip()
                 reporting_person = request.form.get('reporting_person', '').strip()
-                zone             = request.form.get('zone', '').strip() or request.form.get('zone_text', '').strip()
-                notes            = request.form.get('notes', '')
+                zone             = request.form.get('zone_text', '').strip() or request.form.get('zone', '').strip()
+                visit_type       = request.form.get('visit_type', '').strip() or 'Manday'
+                notes            = request.form.get('notes', '').strip()
                 work_update      = request.form.get('work_update', '').strip()
 
                 if pending_work_update_record and status in ['Present', 'Half Day']:
@@ -311,14 +289,13 @@ def my_attendance():
                     po_number        = ''
                     reporting_person = ''
                     zone             = ''
+                    visit_type       = ''
                 else:
-                    # Server-side GPS verification
                     loc = Location.query.filter_by(customer_name=location).first()
                     if loc:
                         user_lat = request.form.get('user_lat')
                         user_lon = request.form.get('user_lon')
                         if not loc.latitude or not loc.longitude:
-                            # Coordinates not set yet: register them from the user's manual entry/capture
                             parsed_lat = parse_coordinate_str(user_lat)
                             parsed_lon = parse_coordinate_str(user_lon)
                             if parsed_lat is not None and parsed_lon is not None:
@@ -329,13 +306,12 @@ def my_attendance():
                                 db.session.commit()
                                 flash(f'GPS coordinates registered for location "{location}". Location verification is now locked and active.', 'info')
                         else:
-                            # Standard GPS Verification
                             lat = parse_coordinate_str(user_lat)
                             lon = parse_coordinate_str(user_lon)
                             if lat is not None and lon is not None:
                                 dist = haversine_distance(lat, lon, loc.latitude, loc.longitude)
-                                if dist > 200:
-                                    flash(f'Out of location range! You are {round(dist)} m away from {location}.', 'error')
+                                if dist > 300:
+                                    flash(f'Out of location range! You are {round(dist)} m away from {location}. (Allowed: 300 m)', 'error')
                                     return redirect(url_for('my_attendance'))
                             else:
                                 flash('Could not verify GPS location. Please make sure location permissions are enabled.', 'error')
@@ -343,7 +319,6 @@ def my_attendance():
 
                 now_time = datetime.now().strftime('%H:%M')
 
-                # Auto-add new PO to pos table if typed manually and not available
                 if po_number:
                     existing_po = PO.query.filter_by(po_number=po_number).first()
                     if not existing_po:
@@ -366,6 +341,7 @@ def my_attendance():
                     check_in=now_time,
                     location=location,
                     po_number=po_number,
+                    visit_type=visit_type,
                     reporting_person=reporting_person,
                     zone=zone,
                     notes=notes,
@@ -374,7 +350,7 @@ def my_attendance():
                 ))
                 recalculate_employee_po_worked_days(employee_id)
                 db.session.commit()
-                flash('✅ Attendance manually recorded successfully!', 'success')
+                flash('✅ Attendance recorded successfully!', 'success')
             return redirect(url_for('my_attendance'))
 
         if employee:
@@ -388,27 +364,41 @@ def my_attendance():
         halfday_count = sum(1 for r in records if r.status == 'Half Day')
 
         raw_locations = Location.query.all()
-        locations = []
-        seen_locs = set()
+        raw_pos = PO.query.all()
+        locations_dict = {}
+
         for l in raw_locations:
             if not l.customer_name:
                 continue
-            if l.customer_name not in seen_locs:
-                seen_locs.add(l.customer_name)
-                zones_list = [z.strip() for z in l.zone.split(',') if z.strip()] if l.zone else []
-                locations.append({
-                    'name': l.customer_name,
-                    'customer_name': l.customer_name,
-                    'zones': zones_list,
+            cname = l.customer_name.strip()
+            if cname not in locations_dict:
+                locations_dict[cname] = {
+                    'name': cname,
+                    'customer_name': cname,
+                    'zones': set(),
                     'gps_enabled': bool(l.latitude and l.longitude),
                     'latitude': l.latitude,
                     'longitude': l.longitude,
-                    'radius_m': 200
-                })
+                    'radius_m': 300
+                }
+            if l.zone:
+                for z in l.zone.split(','):
+                    if z.strip():
+                        locations_dict[cname]['zones'].add(z.strip())
+
+        for p in raw_pos:
+            if p.customer_name:
+                cname = p.customer_name.strip()
+                if cname in locations_dict and p.zone:
+                    locations_dict[cname]['zones'].add(p.zone.strip())
+
+        locations = []
+        for cname, loc in locations_dict.items():
+            loc['zones'] = sorted(list(loc['zones']))
+            locations.append(loc)
         locations.sort(key=lambda x: x['name'])
 
         pos = []
-        raw_pos = PO.query.all()
         for p in raw_pos:
             pos.append({
                 'customer_name': p.customer_name,
@@ -830,6 +820,11 @@ def reports():
         end_date_str = end.isoformat()
 
     end_day = (end - start).days + 1
+    all_dates = [start + timedelta(days=i) for i in range(end_day)]
+    holiday_dates = set(h.date for h in Holiday.query.filter(Holiday.date.between(start, end)).all())
+    working_days = sum(1 for d in all_dates if d.weekday() != 6 and d not in holiday_dates)
+    if working_days == 0:
+        working_days = end_day
 
     query = (
         db.session.query(
@@ -861,44 +856,60 @@ def reports():
                  db.session.query(Employee.department).filter_by(active=True)
                  .distinct().order_by(Employee.department).all()]
 
-    # Location breakdown for the period
-    loc_query = (
-        db.session.query(Attendance.location, func.count(Attendance.id).label('count'))
-        .join(Employee, Attendance.employee_id == Employee.employee_id)
-        .filter(Employee.active == True)
-        .filter(Attendance.date.between(start, end))
-        .filter(Attendance.location != None)
-        .filter(Attendance.location != '')
-    )
+    # Fetch all active employees for selection dropdown
     if role == 'tl':
-        loc_query = loc_query.filter(Employee.reporting_to == session['employee_id'])
-    if dept != 'All':
-        loc_query = loc_query.filter(Employee.department == dept)
-    loc_rows = loc_query.group_by(Attendance.location).order_by(func.count(Attendance.id).desc()).all()
+        all_employees = Employee.query.filter_by(reporting_to=session['employee_id'], active=True).order_by(Employee.employee_id.asc()).all()
+    else:
+        all_employees = Employee.query.filter_by(active=True).order_by(Employee.employee_id.asc()).all()
 
-    # Detailed per-day records for the detailed table
-    detail_query = (
-        db.session.query(
-            Employee.employee_id, Employee.full_name, Employee.department,
-            Attendance.date, Attendance.status, Attendance.check_in, Attendance.check_out,
-            Attendance.time_worked, Attendance.location, Attendance.po_number,
-            Attendance.reporting_person, Attendance.zone, Attendance.notes
+    selected_emp_id = request.args.get('emp_id', '').strip()
+    selected_emp = None
+    loc_rows = []
+    detail_rows = []
+
+    if selected_emp_id:
+        selected_emp = Employee.query.filter_by(employee_id=selected_emp_id).first()
+
+        # Location breakdown for selected employee
+        loc_query = (
+            db.session.query(Attendance.location, func.count(Attendance.id).label('count'))
+            .join(Employee, Attendance.employee_id == Employee.employee_id)
+            .filter(Employee.active == True)
+            .filter(Attendance.date.between(start, end))
+            .filter(Attendance.employee_id == selected_emp_id)
+            .filter(Attendance.location != None)
+            .filter(Attendance.location != '')
         )
-        .join(Employee, Attendance.employee_id == Employee.employee_id)
-        .filter(Employee.active == True)
-        .filter(Attendance.date.between(start, end))
-        .filter(Attendance.status.in_(['Present', 'Half Day']))
-    )
-    if role == 'tl':
-        detail_query = detail_query.filter(Employee.reporting_to == session['employee_id'])
-    if dept != 'All':
-        detail_query = detail_query.filter(Employee.department == dept)
-    detail_rows = detail_query.order_by(Attendance.date.desc(), Employee.full_name).all()
+        if role == 'tl':
+            loc_query = loc_query.filter(Employee.reporting_to == session['employee_id'])
+        if dept != 'All':
+            loc_query = loc_query.filter(Employee.department == dept)
+        loc_rows = loc_query.group_by(Attendance.location).order_by(func.count(Attendance.id).desc()).all()
+
+        # Detailed per-day records for selected employee
+        detail_query = (
+            db.session.query(
+                Employee.employee_id, Employee.full_name, Employee.department,
+                Attendance.date, Attendance.status, Attendance.check_in, Attendance.check_out,
+                Attendance.time_worked, Attendance.location, Attendance.po_number, Attendance.visit_type,
+                Attendance.reporting_person, Attendance.zone, Attendance.notes
+            )
+            .join(Employee, Attendance.employee_id == Employee.employee_id)
+            .filter(Employee.active == True)
+            .filter(Attendance.date.between(start, end))
+            .filter(Attendance.employee_id == selected_emp_id)
+        )
+        if role == 'tl':
+            detail_query = detail_query.filter(Employee.reporting_to == session['employee_id'])
+        if dept != 'All':
+            detail_query = detail_query.filter(Employee.department == dept)
+        detail_rows = detail_query.order_by(Attendance.date.desc()).all()
 
     return render_template('reports.html',
         rows=rows, month=month, start_date=start_date_str, end_date=end_date_str,
-        filter_type=filter_type, dept=dept, depts=depts, end_day=end_day,
-        loc_rows=loc_rows, detail_rows=detail_rows)
+        filter_type=filter_type, dept=dept, depts=depts, end_day=working_days,
+        loc_rows=loc_rows, detail_rows=detail_rows,
+        all_employees=all_employees, selected_emp_id=selected_emp_id, selected_emp=selected_emp)
 
 @app.route('/export')
 @login_required
@@ -1222,20 +1233,20 @@ def verify_location():
             return jsonify({'allowed': True, 'bypass': True})
             
         dist = haversine_distance(emp_lat, emp_lon, loc.latitude, loc.longitude)
-        if dist <= 200:
+        if dist <= 300:
             return jsonify({
                 'allowed':  True,
                 'branch':   loc_name,
                 'distance': round(dist),
-                'radius':   200,
+                'radius':   300,
             })
         else:
             return jsonify({
                 'allowed':        False,
                 'closest_branch': loc_name,
                 'distance':       round(dist),
-                'radius':         200,
-                'message':        f'You are {round(dist)} m away from {loc_name}. Allowed: 200 m.'
+                'radius':         300,
+                'message':        f'You are {round(dist)} m away from {loc_name}. Allowed: 300 m.'
             })
 
     # Find unique GPS-enabled branches
@@ -1258,13 +1269,13 @@ def verify_location():
         if dist < closest_dist:
             closest_dist   = dist
             closest_branch = branch
-        if dist <= 200:
+        if dist <= 300:
             display_name = branch.customer_name
             return jsonify({
                 'allowed':  True,
                 'branch':   display_name,
                 'distance': round(dist),
-                'radius':   200,
+                'radius':   300,
             })
 
     closest_name = closest_branch.customer_name if closest_branch else "—"
@@ -1272,7 +1283,7 @@ def verify_location():
         'allowed':        False,
         'closest_branch': closest_name,
         'distance':       round(closest_dist),
-        'radius':         200,
+        'radius':         300,
         'message':        f'You are {round(closest_dist)} m away from the nearest branch ({closest_name}).'
     })
 
@@ -1423,6 +1434,57 @@ def admin_office_locations():
             'reporting_persons': []
         })
     return render_template('admin_office_locations.html', branches=branches)
+
+@app.route('/admin/holidays', methods=['GET', 'POST'])
+@login_required
+def admin_holidays():
+    if session.get('role') != 'admin':
+        flash('🚫 Admin access required.', 'error')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'add':
+            h_date_str = request.form.get('date')
+            name = request.form.get('name', '').strip()
+            desc = request.form.get('description', '').strip()
+
+            if not h_date_str or not name:
+                flash('⚠️ Date and Holiday Name are required.', 'error')
+            else:
+                try:
+                    h_date = date.fromisoformat(h_date_str)
+                    existing = Holiday.query.filter_by(date=h_date).first()
+                    if existing:
+                        flash(f'⚠️ Holiday already exists for {h_date_str}.', 'error')
+                    else:
+                        hol = Holiday(
+                            date=h_date,
+                            name=name,
+                            description=desc or None,
+                            added_by=session.get('full_name', 'Admin')
+                        )
+                        db.session.add(hol)
+                        db.session.commit()
+                        trigger_background_sync(['holidays'])
+                        flash(f'✅ Holiday "{name}" added for {h_date_str}.', 'success')
+                except ValueError:
+                    flash('⚠️ Invalid date format.', 'error')
+
+        elif action == 'delete':
+            hid = request.form.get('holiday_id')
+            hol = Holiday.query.get(hid)
+            if hol:
+                name = hol.name
+                db.session.delete(hol)
+                db.session.commit()
+                trigger_background_sync(['holidays'])
+                flash(f'✅ Holiday "{name}" deleted.', 'success')
+
+        return redirect(url_for('admin_holidays'))
+
+    holidays = Holiday.query.order_by(Holiday.date.asc()).all()
+    return render_template('admin_holidays.html', holidays=holidays)
 
 @app.route('/sync-from-sheets')
 @login_required

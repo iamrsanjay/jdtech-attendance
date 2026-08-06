@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% block title %}Company Holidays — JD TECH{% endblock %}
+{% block page_title %}Company Holidays{% endblock %}
+{% block page_subtitle %}Manage official company holidays and leave dates{% endblock %}
+
+{% block content %}
+<div class="grid grid-2" style="margin-bottom: 24px; align-items: start;">
+  <!-- Add New Holiday Form -->
+  <div class="card">
+    <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+      🎉 Add New Company Holiday
+    </div>
+    <form method="POST">
+      <input type="hidden" name="action" value="add">
+      <div class="form-group">
+        <label>Holiday Date</label>
+        <input type="date" name="date" required style="cursor:pointer;">
+      </div>
+
+      <div class="form-group">
+        <label>Holiday Name</label>
+        <input type="text" name="name" placeholder="e.g. Independence Day, Diwali, New Year" required>
+      </div>
+
+      <div class="form-group">
+        <label>Description / Notes (Optional)</label>
+        <input type="text" name="description" placeholder="Optional details...">
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;">
+        ➕ Save Holiday
+      </button>
+    </form>
+  </div>
+
+  <!-- Information Card -->
+  <div class="card" style="background:var(--surface2);">
+    <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+      💡 Attendance & Working Days Rule
+    </div>
+    <div style="font-size:13px; color:var(--muted); line-height:1.6;">
+      <p style="margin-bottom:12px;">
+        • <strong style="color:var(--text);">Sundays automatically excluded:</strong> All Sundays are treated as weekly off days in monthly attendance calculations.
+      </p>
+      <p style="margin-bottom:12px;">
+        • <strong style="color:var(--text);">Official Holidays:</strong> Dates added here will automatically be excluded from total required working days when computing employee attendance percentages.
+      </p>
+      <p style="margin:0;">
+        • <strong style="color:var(--text);">Google Sheets Sync:</strong> Any changes made here are automatically synced to the <code>holidays</code> worksheet in Google Sheets.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Holiday Listing Table -->
+<div class="card">
+  <div class="card-title" style="display:flex; align-items:center; justify-content:space-between;">
+    <span>📅 Scheduled Holidays ({% if holidays %}{{ holidays | length }}{% else %}0{% endif %})</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Day</th>
+          <th>Holiday Name</th>
+          <th>Description</th>
+          <th>Added By</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if holidays %}
+          {% for h in holidays %}
+          <tr>
+            <td style="font-weight:700; color:var(--text); white-space:nowrap;">
+              {{ h.date.strftime('%d %b %Y') if h.date else '—' }}
+            </td>
+            <td>
+              <span class="badge" style="background:rgba(99, 102, 241, 0.1); color:#6366f1; border:1px solid rgba(99, 102, 241, 0.2);">
+                {{ h.date.strftime('%A') if h.date else '—' }}
+              </span>
+            </td>
+            <td>
+              <strong style="color:var(--accent);">🎉 {{ h.name }}</strong>
+            </td>
+            <td style="color:var(--muted); font-size:13px;">
+              {{ h.description or '—' }}
+            </td>
+            <td style="color:var(--muted); font-size:12px;">
+              {{ h.added_by or 'Admin' }}
+            </td>
+            <td>
+              <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this holiday?');">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="holiday_id" value="{{ h.id }}">
+                <button type="submit" class="btn btn-danger btn-sm" style="padding:4px 10px;">🗑️ Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="6">
+              <div style="text-align:center; padding:40px 20px; color:var(--muted);">
+                <div style="font-size:40px; margin-bottom:12px;">🎉</div>
+                <h4 style="font-size:16px; font-weight:700; color:var(--text); margin-bottom:4px;">No Company Holidays Added Yet</h4>
+                <p style="font-size:13px; margin:0;">Use the form above to add official holidays to the calendar.</p>
+              </div>
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

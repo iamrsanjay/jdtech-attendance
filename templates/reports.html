@@ -84,13 +84,26 @@ window.addEventListener('click', function(event) {
 
     <div class="form-group" style="margin:0;">
       <label>Department</label>
-      <select name="dept" style="width:180px; cursor:pointer;">
+      <select name="dept" style="width:160px; cursor:pointer;">
         <option value="All" {% if dept=='All' %}selected{% endif %}>All Departments</option>
         {% for d in depts %}
         <option value="{{ d }}" {% if dept==d %}selected{% endif %}>{{ d }}</option>
         {% endfor %}
       </select>
     </div>
+
+    <div class="form-group" style="margin:0;">
+      <label>Select Employee</label>
+      <select name="emp_id" style="width:220px; cursor:pointer;">
+        <option value="" {% if not selected_emp_id %}selected{% endif %}>— All Employees (Overview) —</option>
+        {% for e in all_employees %}
+        <option value="{{ e.employee_id }}" {% if selected_emp_id == e.employee_id %}selected{% endif %}>
+          {{ e.employee_id }} - {{ e.full_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
     <button type="submit" class="btn btn-secondary" style="padding: 11px 24px; font-weight:700;">Apply Filters</button>
   </form>
 </div>
@@ -103,36 +116,28 @@ function toggleFilterType(val) {
 }
 </script>
 
-<!-- Summary Stats -->
-{% if rows %}
-{% set total_present = rows | sum(attribute='present_days') %}
-{% set total_absent  = rows | sum(attribute='absent_days') %}
-{% set total_half    = rows | sum(attribute='halfday_days') %}
-<div class="grid grid-3" style="margin-bottom:20px;">
-  <div class="stat-card green">
-    <div class="stat-label">Total Present Days</div>
-    <div class="stat-value" style="font-size:28px;">{{ total_present }}</div>
+{% if selected_emp_id and selected_emp %}
+<!-- ── Selected Employee Summary & Details Header ────────────────────── -->
+<div style="background:var(--surface2); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+  <div>
+    <h3 style="margin:0 0 4px 0; font-size:20px; font-weight:800; color:var(--text);">
+      👤 {{ selected_emp.full_name }} <span style="font-size:14px; font-weight:600; color:var(--accent);">({{ selected_emp.employee_id }})</span>
+    </h3>
+    <div style="font-size:13px; color:var(--muted);">
+      {{ selected_emp.department }} · {{ selected_emp.position or 'Employee' }}
+    </div>
   </div>
-  <div class="stat-card red">
-    <div class="stat-label">Total Absent Days</div>
-    <div class="stat-value" style="font-size:28px;">{{ total_absent }}</div>
-  </div>
-  <div class="stat-card" style="border-left:3px solid var(--halfday);">
-    <div class="stat-label">Half Days</div>
-    <div class="stat-value" style="font-size:28px; color:var(--halfday);">{{ total_half }}</div>
-  </div>
+  <a href="{{ url_for('reports', filter_type=filter_type, month=month, start_date=start_date, end_date=end_date, dept=dept) }}" class="btn btn-secondary btn-sm" style="padding:8px 16px; font-size:12px;">
+    ← Back to All Employees Overview
+  </a>
 </div>
-{% endif %}
 
-<!-- ── Detailed Attendance Table ─────────────────────────────────────── -->
-<div class="card">
+<!-- Detailed Attendance Table for Selected Employee -->
+<div class="card" style="margin-bottom:20px;">
   <div class="card-title">
-    🗒️ Detailed Attendance — 
+    🗒️ Attendance Log for {{ selected_emp.full_name }} — 
     {% if filter_type == 'custom' %}{{ start_date }} to {{ end_date }}{% else %}{{ month }}{% endif %}
-    {% if dept != 'All' %} · {{ dept }}{% endif %}
-    {% if detail_rows %}
     <span style="margin-left:auto; font-size:12px; font-weight:500; color:var(--muted);">{{ detail_rows|length }} records</span>
-    {% endif %}
   </div>
   <div class="table-wrap">
     <table class="detail-table">
@@ -147,6 +152,7 @@ function toggleFilterType(val) {
           <th>Zone</th>
           <th>Reporting Person</th>
           <th>PO Number</th>
+          <th>Visit Type</th>
           <th>Location</th>
           <th>Status</th>
         </tr>
@@ -182,6 +188,11 @@ function toggleFilterType(val) {
             </td>
             <td style="color:var(--muted); font-size:13px;">{{ r.reporting_person or '—' }}</td>
             <td style="font-family:monospace; font-size:12px; color:var(--text);">{{ r.po_number or '—' }}</td>
+            <td style="font-size:12px;">
+              <span style="background:rgba(99, 102, 241, 0.12); color:#6366f1; border:1px solid rgba(99, 102, 241, 0.25); padding:2px 8px; border-radius:6px; font-weight:600;">
+                {{ r.visit_type or 'Manday' }}
+              </span>
+            </td>
             <td style="font-size:12px; color:var(--muted);">{{ r.location or '—' }}</td>
             <td>
               {% if r.status == 'Present' %}
@@ -196,15 +207,10 @@ function toggleFilterType(val) {
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="11">
-              <div style="text-align:center; padding:60px 20px; color:var(--muted);">
-                <div style="font-size:48px; margin-bottom:16px;">📊</div>
-                <h3 style="font-size:20px; font-weight:700; margin-bottom:8px; color:var(--text);">No Attendance Records Found</h3>
-                <p style="font-size:14px; line-height:1.6;">
-                  No present/half-day records for
-                  <strong>{% if filter_type == 'custom' %}{{ start_date }} to {{ end_date }}{% else %}{{ month }}{% endif %}</strong>
-                  {% if dept != 'All' %}in <strong>{{ dept }}</strong>{% endif %}.
-                </p>
+            <td colspan="12">
+              <div style="text-align:center; padding:40px 20px; color:var(--muted);">
+                <h3 style="font-size:16px; font-weight:700; margin-bottom:6px; color:var(--text);">No Attendance Records Found</h3>
+                <p style="font-size:13px; margin:0;">No records for this employee in the selected time period.</p>
               </div>
             </td>
           </tr>
@@ -214,64 +220,10 @@ function toggleFilterType(val) {
   </div>
 </div>
 
-<!-- ── Employee Summary (collapsible) ─────────────────────────────────── -->
-{% if rows %}
-<div class="card" style="margin-top:20px;">
-  <div class="card-title" style="cursor:pointer;" onclick="toggleSummary()">
-    📋 Employee Summary —
-    {% if filter_type == 'custom' %}{{ start_date }} to {{ end_date }}{% else %}{{ month }}{% endif %}
-    {% if dept != 'All' %} · {{ dept }}{% endif %}
-    <span id="summaryToggleIcon" style="margin-left:auto; font-size:13px; font-weight:500; color:var(--muted);">▼ Show</span>
-  </div>
-  <div id="summarySection" style="display:none;">
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Employee ID</th>
-            <th>Name</th>
-            <th>Department</th>
-            <th style="color:var(--present);">Present</th>
-            <th style="color:var(--absent);">Absent</th>
-            <th style="color:var(--halfday);">Half Day</th>
-            <th>Marked Days</th>
-            <th>Attendance %</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in rows %}
-          {% set pct = ((r.present_days + r.halfday_days * 0.5) / end_day * 100) | round(1) if end_day > 0 else 0 %}
-          <tr>
-            <td><span style="font-family:monospace;color:var(--accent);font-size:12px;">{{ r.employee_id }}</span></td>
-            <td><strong>{{ r.full_name }}</strong></td>
-            <td style="color:var(--muted);">{{ r.department }}</td>
-            <td><span class="badge badge-present">{{ r.present_days }}</span></td>
-            <td><span class="badge badge-absent">{{ r.absent_days }}</span></td>
-            <td><span class="badge badge-halfday">{{ r.halfday_days }}</span></td>
-            <td style="color:var(--muted);">{{ r.total_marked }} / {{ end_day }}</td>
-            <td>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <div style="width:60px; background:var(--surface2); border-radius:4px; height:6px;">
-                  <div style="width:{{ pct }}%; height:100%; background:{% if pct >= 75 %}var(--present){% elif pct >= 50 %}var(--warn){% else %}var(--absent){% endif %}; border-radius:4px;"></div>
-                </div>
-                <span style="font-size:12px; font-weight:700; color:{% if pct >= 75 %}var(--present){% elif pct >= 50 %}var(--warn){% else %}var(--absent){% endif %};">
-                  {{ pct }}%
-                </span>
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-{% endif %}
-
-<!-- Location Breakdown -->
+<!-- Location Breakdown for Selected Employee -->
 {% if loc_rows %}
-<div class="card" style="margin-top: 24px;">
-  <div class="card-title">📍 Location Breakdown — {% if filter_type == 'custom' %}{{ start_date }} to {{ end_date }}{% else %}{{ month }}{% endif %} {% if dept != 'All' %}· {{ dept }}{% endif %}</div>
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-title">📍 Location Breakdown for {{ selected_emp.full_name }}</div>
   {% set loc_total = loc_rows | sum(attribute='count') %}
   <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
     {% for loc, cnt in loc_rows %}
@@ -286,11 +238,72 @@ function toggleFilterType(val) {
       <div style="background: var(--border); border-radius: 4px; height: 6px;">
         <div style="width: {{ pct }}%; height: 100%; background: {% if loc == 'WFH' %}#7c3aed{% elif loc == 'Office' %}var(--accent2){% else %}var(--accent){% endif %}; border-radius: 4px; transition: width 0.4s;"></div>
       </div>
-      <div style="font-size: 11px; color: var(--muted); margin-top: 6px;">{{ pct }}% of all entries</div>
+      <div style="font-size: 11px; color: var(--muted); margin-top: 6px;">{{ pct }}% of entries</div>
     </div>
     {% endfor %}
   </div>
 </div>
+{% endif %}
+
+{% else %}
+
+{% if rows %}
+<!-- ── Main Employee Summary Overview Table ─────────────────────────── -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title">
+    📋 All Employees Attendance Overview —
+    {% if filter_type == 'custom' %}{{ start_date }} to {{ end_date }}{% else %}{{ month }}{% endif %}
+    {% if dept != 'All' %} · {{ dept }}{% endif %}
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Employee ID</th>
+          <th>Name</th>
+          <th>Department</th>
+          <th style="color:var(--present);">Present</th>
+          <th style="color:var(--absent);">Absent</th>
+          <th style="color:var(--halfday);">Half Day</th>
+          <th>Marked Days</th>
+          <th>Attendance %</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        {% set pct = ((r.present_days + r.halfday_days * 0.5) / end_day * 100) | round(1) if end_day > 0 else 0 %}
+        <tr>
+          <td><span style="font-family:monospace;color:var(--accent);font-weight:700;font-size:12px;">{{ r.employee_id }}</span></td>
+          <td><strong>{{ r.full_name }}</strong></td>
+          <td style="color:var(--muted);">{{ r.department }}</td>
+          <td><span class="badge badge-present">{{ r.present_days }}</span></td>
+          <td><span class="badge badge-absent">{{ r.absent_days }}</span></td>
+          <td><span class="badge badge-halfday">{{ r.halfday_days }}</span></td>
+          <td style="color:var(--muted);">{{ r.total_marked }} / {{ end_day }}</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="width:60px; background:var(--surface2); border-radius:4px; height:6px;">
+                <div style="width:{{ pct }}%; height:100%; background:{% if pct >= 75 %}var(--present){% elif pct >= 50 %}var(--warn){% else %}var(--absent){% endif %}; border-radius:4px;"></div>
+              </div>
+              <span style="font-size:12px; font-weight:700; color:{% if pct >= 75 %}var(--present){% elif pct >= 50 %}var(--warn){% else %}var(--absent){% endif %};">
+                {{ pct }}%
+              </span>
+            </div>
+          </td>
+          <td>
+            <a href="{{ url_for('reports', filter_type=filter_type, month=month, start_date=start_date, end_date=end_date, dept=dept, emp_id=r.employee_id) }}" class="btn btn-secondary btn-sm" style="font-size:11px; padding:4px 10px;">
+              🔍 View Logs
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {% endif %}
 
 <script>

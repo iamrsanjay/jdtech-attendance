@@ -99,7 +99,7 @@
   <span>ℹ️</span>
   <div>
     Each work <strong>Location</strong> can hold multiple <strong>Purchase Orders (POs)</strong>.
-    If <strong>GPS Verification</strong> is enabled for a location, users must be within 200m (or custom radius) of its GPS coordinates to check in.
+    If <strong>GPS Verification</strong> is enabled for a location, users must be within 300m (or custom radius) of its GPS coordinates to check in.
     If GPS is disabled, employees can check in at that location from anywhere.
   </div>
 </div>
@@ -173,7 +173,7 @@
       
       {% if b.gps_enabled %}
       <div class="branch-coords">{{ '%.6f' % b.latitude if b.latitude else '0.0' }}, {{ '%.6f' % b.longitude if b.longitude else '0.0' }}</div>
-      <div class="branch-radius">⭕ 200 m radius</div>
+      <div class="branch-radius">⭕ 300 m radius</div>
       {% else %}
       <div style="font-size:12px; color:var(--muted); margin-top:6px;">No GPS restriction applied</div>
       {% endif %}

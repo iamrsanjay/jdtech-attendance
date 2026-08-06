@@ -61,51 +61,47 @@
     </div>
   </div>
 
-  {% set departments = [] %}
-  {% for emp in employees %}
-    {% if emp.department not in departments %}
-      {% if departments.append(emp.department) %}{% endif %}
-    {% endif %}
-  {% endfor %}
-
-  {% for dept in departments %}
   <div class="card" style="margin-bottom:20px;">
     <div class="card-title" style="display:flex; align-items:center; gap:8px;">
-      🏢 {{ dept }}
+      📋 Employee Attendance Roster
       <span style="font-size:12px; color:var(--muted); font-weight:400;">
-        ({{ employees | selectattr('department','eq',dept) | list | length }} employees)
+        ({{ employees | length }} employees ordered by Employee ID)
       </span>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
+            <th style="width:12%;">Emp ID</th>
             <th style="width:20%;">Employee</th>
-            <th style="width:24%;">Status</th>
-            <th style="width:22%;">Check In / Out</th>
-            <th style="width:17%;">Location</th>
-            <th style="width:17%;">Notes <span style="font-size:10px; font-weight:400; color:var(--halfday); letter-spacing:0;">(Half Day only)</span></th>
+            <th style="width:28%;">Status</th>
+            <th style="width:16%;">Check In / Out</th>
+            <th style="width:12%;">Location</th>
+            <th style="width:12%;">Notes <span style="font-size:10px; font-weight:400; color:var(--halfday); letter-spacing:0;">(Half Day only)</span></th>
           </tr>
         </thead>
         <tbody>
-          {% for emp in employees if emp.department == dept %}
+          {% for emp in employees %}
           {% set ex = existing.get(emp.employee_id) %}
           {% set is_halfday = ex and ex.status == 'Half Day' %}
           {% set is_absent = ex and ex.status == 'Absent' %}
           <tr>
             <td>
-              <strong>{{ emp.full_name }}</strong><br>
-              <span style="color:var(--muted);font-size:12px;">{{ emp.employee_id }} · {{ emp.position }}</span>
+              <span style="font-family:monospace; font-weight:700; font-size:13px; color:var(--accent);">{{ emp.employee_id }}</span>
             </td>
             <td>
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <strong>{{ emp.full_name }}</strong><br>
+              <span style="color:var(--muted);font-size:12px;">{{ emp.department }} · {{ emp.position }}</span>
+            </td>
+            <td>
+              <div style="display:flex; gap:6px; flex-wrap:nowrap; align-items:center; white-space:nowrap;">
                 {% for s, cls in [('Present','present'),('Absent','absent'),('Half Day','halfday')] %}
-                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; font-weight:600; color:var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; transition: all 0.2s;">
+                <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-size:11px; font-weight:600; color:var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; white-space:nowrap;">
                   <input type="radio" name="status_{{ emp.employee_id }}" value="{{ s }}"
-                    class="status-radio dept-{{ dept | replace(' ','_') }}"
+                    class="status-radio"
                     data-emp="{{ emp.employee_id }}"
                     {% if ex and ex.status == s %}checked{% endif %}
-                    style="width:16px; height:16px; accent-color:var(--{{ cls }}); cursor:pointer; margin:0;"
+                    style="width:14px; height:14px; accent-color:var(--{{ cls }}); cursor:pointer; margin:0;"
                     onchange="toggleNotes('{{ emp.employee_id }}', this.value)">
                   <span style="color: var(--{{ cls }});">{{ s }}</span>
                 </label>
@@ -155,11 +151,9 @@
           </tr>
           {% endfor %}
         </tbody>
-
       </table>
     </div>
   </div>
-  {% endfor %}
 
   <div style="display:flex; justify-content:flex-end; margin-top:8px;">
     <button type="submit" class="btn btn-primary">💾 Save All Attendance</button>
