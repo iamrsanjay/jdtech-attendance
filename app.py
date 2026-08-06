@@ -18,6 +18,8 @@ from sheets_db import db, configure_app, pull_from_sheets, trigger_background_sy
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'attendance_secret_key_2024')
+# Keep users logged in for 30 days — session only ends on explicit logout
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 configure_app(app)
 
 _db_initialized = False
@@ -191,6 +193,7 @@ def login():
             (Employee.active == True)
         ).first()
         if emp:
+            session.permanent = True  # Persist session cookie beyond browser close
             session.update(
                 user_id=emp.id,
                 username=emp.employee_id,
