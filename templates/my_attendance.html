@@ -57,8 +57,8 @@ tbody tr { border-bottom:1px solid var(--border); transition:background 0.15s; }
 tbody tr:hover { background: rgba(0,0,0,0.015); }
 tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
 .badge {
-  display:inline-block; padding:4px 12px; border-radius:20px;
-  font-size:11px; font-weight:700; letter-spacing:0.5px;
+  display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+  padding:4px 12px; border-radius:20px; font-size:12px; font-weight:700; letter-spacing:0.3px;
 }
 .badge-present { background: rgba(16, 185, 129, 0.1); color: var(--present); border: 1px solid rgba(16, 185, 129, 0.2); }
 .badge-absent  { background: rgba(220, 38, 38, 0.1); color: var(--absent); border: 1px solid rgba(220, 38, 38, 0.2); }
@@ -528,52 +528,77 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
       return;
     }
 
-    setGpsStatus('📡', `Detecting GPS position for <strong>${name}</strong>…`, '#93c5fd', false);
+    setGpsStatus('📡', `Aquiring live satellite GPS for <strong>${name}</strong>…`, '#93c5fd', false);
 
-    navigator.geolocation.getCurrentPosition(
+    let watchId = null;
+    let bestFix = null;
+    let timerId = null;
+
+    function evaluatePosition(pos) {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy || 0;
+
+      document.getElementById('user_lat').value = lat;
+      document.getElementById('user_lon').value = lon;
+
+      const rawDist = calculateDistance(lat, lon, targetLat, targetLon);
+      // Deduct accuracy margin to account for indoor drift / signal error
+      const effectiveDist = Math.max(0, rawDist - accuracy);
+
+      if (!bestFix || accuracy < bestFix.accuracy || effectiveDist < bestFix.effectiveDist) {
+        bestFix = { lat, lon, rawDist, effectiveDist, accuracy };
+      }
+
+      if (effectiveDist <= targetRadius) {
+        if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+        if (timerId !== null) { clearTimeout(timerId); timerId = null; }
+
+        locationVerified = true;
+        setGpsStatus('✅', `✅ Confirmed — you are within <strong>${name}</strong> (${Math.round(rawDist)} m away, GPS accuracy: ±${Math.round(accuracy)} m).`, '#a7f3d0', false);
+        if (strip) strip.style.background = '#ecfdf5';
+        callback(true);
+        return true;
+      }
+      return false;
+    }
+
+    // Use watchPosition to stream fresh GPS updates instead of returning stale cached fixes
+    watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
+        const passed = evaluatePosition(pos);
+        if (passed) return;
+      },
+      (err) => {
+        // Ignore initial non-fatal errors while streaming
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
 
-        document.getElementById('user_lat').value = lat;
-        document.getElementById('user_lon').value = lon;
-
-        const dist = calculateDistance(lat, lon, targetLat, targetLon);
-
-        if (dist <= targetRadius) {
+    // Set a 3.5 second timer to evaluate the best GPS fix captured so far
+    timerId = setTimeout(() => {
+      if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+      
+      if (bestFix) {
+        if (bestFix.effectiveDist <= targetRadius) {
           locationVerified = true;
-          setGpsStatus('✅', `✅ Confirmed — you are within <strong>${name}</strong> (${Math.round(dist)} m away).`, '#a7f3d0', false);
+          setGpsStatus('✅', `✅ Confirmed — you are within <strong>${name}</strong> (${Math.round(bestFix.rawDist)} m away).`, '#a7f3d0', false);
           if (strip) strip.style.background = '#ecfdf5';
           callback(true);
         } else {
           locationVerified = false;
-          setGpsStatus('❌', `❌ Out of range: you are <strong>${Math.round(dist)} m</strong> away from <strong>${name}</strong> (Allowed: ${targetRadius} m).`, '#fecaca', true);
+          setGpsStatus('❌', `❌ Out of range: you are <strong>${Math.round(bestFix.rawDist)} m</strong> away from <strong>${name}</strong> (Allowed: ${targetRadius} m).`, '#fecaca', true);
           if (strip) strip.style.background = '#fef2f2';
           showLocationBlockedModal(
-            `You selected <strong>${name}</strong> but you are <strong>${Math.round(dist)} metres</strong> away.<br><br>Attendance can only be marked within ${targetRadius} m of the location.`
+            `You selected <strong>${name}</strong> but you are <strong>${Math.round(bestFix.rawDist)} metres</strong> away.<br><br>Attendance can only be marked within ${targetRadius} m of the location.`
           );
           callback(false);
         }
-      },
-      (err) => {
-        let hint = 'Location access failed. Please enable location permissions.';
-        if (err.code === 1) hint = 'Location permission denied. Please allow it.';
-        else if (err.code === 2) hint = 'GPS signal unavailable.';
-        else if (err.code === 3) hint = 'Location verification timed out.';
-        setGpsStatus('⚠️', `⚠️ ${hint}`, '#fde68a', true);
-
-        // Check for insecure origin
-        if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-          if (troubleshootCard) {
-            troubleshootCard.style.display = 'block';
-            const urlPlaceholder = document.getElementById('app-url-placeholder');
-            if (urlPlaceholder) urlPlaceholder.textContent = window.location.origin;
-          }
-        }
+      } else {
+        setGpsStatus('⚠️', '⚠️ Could not get accurate GPS location fix. Please retry or step near a window.', '#fde68a', true);
         callback(false);
-      },
-      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
-    );
+      }
+    }, 3500);
   }
 
   function updateNotesField(status) {
@@ -964,7 +989,6 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
             <th>Zone</th>
             <th>Marked By</th>
             <th>Work Update</th>
-            <th>Notes</th>
           </tr>
         </thead>
         <tbody>
@@ -1018,18 +1042,23 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
             <td style="font-size:13px; font-weight:700; color:var(--present); text-align:center;">{{ rec.po_worked_days or '—' }}</td>
             <td style="font-size:13px;">{{ rec.reporting_person or '—' }}</td>
             <td style="font-size:13px;">{{ rec.zone or '—' }}</td>
-            <td style="color:var(--muted); font-size:12px;">{{ rec.marked_by or '—' }}</td>
+            <td style="color:var(--text); font-size:13px; font-weight:600;">
+              {% if rec.marked_by and rec.marked_by != 'Google Sheets Sync' %}
+                {{ rec.marked_by }}
+              {% else %}
+                {{ rec.employee_id }}
+              {% endif %}
+            </td>
             <td style="font-size:13px; min-width:180px;">
               {% if rec.work_update %}
                 <div style="color:var(--text); font-weight:500; font-size:12px; margin-bottom:4px; white-space:pre-wrap; word-break:break-word;">{{ rec.work_update }}</div>
-                <button type="button" onclick="openWorkUpdateModal('{{ rec.id }}', '{{ rec.date.strftime('%d %b %Y') }}', {{ rec.work_update|tojson }})" style="background:none; border:none; color:var(--accent); font-size:11px; font-weight:700; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:3px;">✏️ Edit</button>
+                <button type="button" data-rec-id="{{ rec.id or '' }}" data-date-iso="{{ rec.date.isoformat() }}" data-date-fmt="{{ rec.date.strftime('%d %b %Y') }}" data-work-update="{{ rec.work_update or '' }}" onclick="openWorkUpdateModalFromBtn(this)" style="background:none; border:none; color:var(--accent); font-size:11px; font-weight:700; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:3px;">✏️ Edit</button>
               {% elif rec.status != 'Absent' %}
-                <button type="button" onclick="openWorkUpdateModal('{{ rec.id }}', '{{ rec.date.strftime('%d %b %Y') }}', '')" style="background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.2); color:#dc2626; font-size:11px; font-weight:700; cursor:pointer; padding:4px 8px; border-radius:6px; display:inline-flex; align-items:center; gap:4px;">➕ Add Update</button>
+                <button type="button" data-rec-id="{{ rec.id or '' }}" data-date-iso="{{ rec.date.isoformat() }}" data-date-fmt="{{ rec.date.strftime('%d %b %Y') }}" data-work-update="" onclick="openWorkUpdateModalFromBtn(this)" style="background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.2); color:#dc2626; font-size:11px; font-weight:700; cursor:pointer; padding:4px 8px; border-radius:6px; display:inline-flex; align-items:center; gap:4px;">➕ Add Update</button>
               {% else %}
                 <span style="color:var(--muted); font-size:12px;">—</span>
               {% endif %}
             </td>
-            <td style="color:var(--muted); font-size:13px;">{{ rec.notes or '—' }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -1066,6 +1095,7 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
       <div id="modal-work-update-date" style="font-size:13px; font-weight:700; color:var(--accent); margin-bottom:14px; background:var(--accent-light); padding:6px 12px; border-radius:8px; display:inline-block;"></div>
       <form method="POST" action="{{ url_for('update_work_update') }}">
         <input type="hidden" name="record_id" id="modal_work_update_rec_id">
+        <input type="hidden" name="record_date" id="modal_work_update_rec_date">
         <div style="margin-bottom:18px;">
           <label class="form-label">Tasks / Progress Completed</label>
           <textarea id="modal_work_update_text" name="work_update" required placeholder="Enter work update details for this day..." class="form-input" style="min-height:110px; resize:vertical; background:#ffffff; font-family:'Inter',sans-serif;"></textarea>
@@ -1079,10 +1109,16 @@ tbody td { padding:14px 16px; font-size:14px; vertical-align:middle; }
   </div>
 
   <script>
-    function openWorkUpdateModal(recId, dateStr, currentText) {
+    function openWorkUpdateModalFromBtn(btn) {
+      const recId = btn.getAttribute('data-rec-id') || '';
+      const isoDate = btn.getAttribute('data-date-iso') || '';
+      const dateStr = btn.getAttribute('data-date-fmt') || '';
+      const currentText = btn.getAttribute('data-work-update') || '';
+
       document.getElementById('modal_work_update_rec_id').value = recId;
+      document.getElementById('modal_work_update_rec_date').value = isoDate;
       document.getElementById('modal-work-update-date').innerText = '📅 Date: ' + dateStr;
-      document.getElementById('modal_work_update_text').value = currentText || '';
+      document.getElementById('modal_work_update_text').value = currentText;
       document.getElementById('work-update-modal').style.display = 'flex';
     }
     function closeWorkUpdateModal() {

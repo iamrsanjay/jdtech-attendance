@@ -85,6 +85,7 @@ class PO(db.Model):
     zone             = db.Column(db.String(80), nullable=False)
     po_number        = db.Column(db.String(80), nullable=True)
     days             = db.Column(db.String(20), nullable=True)
+    worked_days      = db.Column(db.Integer, nullable=True)
     reporting_person = db.Column(db.String(120), nullable=True)
     added_by         = db.Column(db.String(120), nullable=True)
 
@@ -109,7 +110,7 @@ TABLE_HEADERS = {
     'employees': ['id', 'employee_id', 'password', 'role', 'full_name', 'department', 'position', 'email', 'phone', 'join_date', 'active', 'reporting_to'],
     'attendance': ['id', 'employee_id', 'date', 'status', 'check_in', 'check_out', 'time_worked', 'notes', 'marked_by', 'location', 'po_number', 'reporting_person', 'zone', 'po_worked_days', 'work_update', 'visit_type'],
     'locations': ['Customer ID', 'Customer Name', 'Zone', 'Latitude', 'Longitude', 'Created At', 'Added By'],
-    'pos': ['S.no', 'Customer Name', 'Zone', 'Po Number', 'Days', 'Reporting Person', 'Added By'],
+    'pos': ['S.no', 'Customer Name', 'Zone', 'Po Number', 'Days', 'Worked Days', 'Reporting Person', 'Added By'],
     'holidays': ['Date', 'Holiday Name', 'Description', 'Added By']
 }
 
@@ -132,11 +133,27 @@ def parse_date_str(val):
 def parse_coordinate_str(val):
     if val in ("", None):
         return None
-    val_str = str(val).strip()
+    val_str = str(val).strip().rstrip(',')
     try:
         return float(val_str)
     except ValueError:
         pass
+
+    # Check for Degrees Minutes Seconds (DMS) format e.g. 13°10'43.0"N or 80°18'26.1"E
+    dms_match = re.search(r'(\d+)\s*°\s*(\d+)\s*[\'′]\s*(\d+(?:\.\d+)?)\s*["″]?\s*([NSEWnsew])?', val_str)
+    if dms_match:
+        try:
+            deg = float(dms_match.group(1))
+            minute = float(dms_match.group(2))
+            sec = float(dms_match.group(3))
+            direction = dms_match.group(4)
+            decimal = deg + (minute / 60.0) + (sec / 3600.0)
+            if direction and direction.upper() in ('S', 'W'):
+                decimal = -abs(decimal)
+            return round(decimal, 7)
+        except Exception:
+            pass
+
     match = re.search(r'([-+]?\d+(?:\.\d+)?)\s*°?\s*([NSEWnsew])?', val_str)
     if match:
         try:
@@ -241,6 +258,7 @@ def calculate_time_worked(check_in, check_out):
         return None
 
 def recalculate_po_worked_days_local(employee_id):
+    SITE_SUPPORT_EXCLUSION_START_DATE = date(2026, 8, 8)
     records = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.date.asc()).all()
     po_counts = {}
     for r in records:
@@ -249,6 +267,11 @@ def recalculate_po_worked_days_local(employee_id):
             if not po:
                 r.po_worked_days = None
                 continue
+            visit = (r.visit_type or '').strip().lower()
+            if r.date and r.date >= SITE_SUPPORT_EXCLUSION_START_DATE:
+                if visit in ('site support', 'site-support') or ('site' in visit and 'support' in visit):
+                    r.po_worked_days = None
+                    continue
             if r.status in ['Present', 'Half Day']:
                 po_counts[po] = po_counts.get(po, 0) + 1
                 r.po_worked_days = po_counts[po]
@@ -257,6 +280,44 @@ def recalculate_po_worked_days_local(employee_id):
         else:
             r.po_worked_days = None
     db.session.commit()
+
+from sqlalchemy import func
+
+def recalculate_all_pos_total_worked_days():
+    """
+    Calculates total days worked (Present / Half Day) across all employees for each PO object
+    and updates PO.worked_days in SQLite. Excludes 'Site Support' visit types from tomorrow (2026-08-08) onwards.
+    """
+    SITE_SUPPORT_EXCLUSION_START_DATE = date(2026, 8, 8)
+    try:
+        all_pos = PO.query.all()
+        has_changes = False
+        for po_obj in all_pos:
+            if po_obj.po_number and po_obj.po_number.strip():
+                po_clean = po_obj.po_number.strip()
+                records = Attendance.query.filter(
+                    func.lower(func.trim(Attendance.po_number)) == po_clean.lower(),
+                    Attendance.status.in_(['Present', 'Half Day'])
+                ).all()
+                
+                valid_count = 0
+                for r in records:
+                    v = (r.visit_type or '').strip().lower()
+                    if r.date and r.date >= SITE_SUPPORT_EXCLUSION_START_DATE:
+                        if v in ('site support', 'site-support') or ('site' in v and 'support' in v):
+                            continue
+                    valid_count += 1
+                if po_obj.worked_days != valid_count:
+                    po_obj.worked_days = valid_count
+                    has_changes = True
+            elif po_obj.worked_days != 0 and po_obj.worked_days is not None:
+                po_obj.worked_days = 0
+                has_changes = True
+        if has_changes:
+            db.session.commit()
+    except Exception as e:
+        print(f"Error recalculating total worked days for POs: {e}")
+        db.session.rollback()
 
 ATTENDANCE_SHEET_HEADERS = [
     'Employee ID', 'Full Name', 'Department', 'Status',
@@ -392,6 +453,7 @@ def get_sheet_row_vals(r, tablename, headers):
             r.zone if r.zone is not None else "",
             r.po_number if r.po_number is not None else "",
             r.days if r.days is not None else "",
+            r.worked_days if r.worked_days is not None else 0,
             r.reporting_person if r.reporting_person is not None else "",
             r.added_by if r.added_by is not None else ""
         ]
@@ -652,6 +714,7 @@ def pull_from_sheets(app):
                         zone = record.get('Zone')
                         po_num = record.get('Po Number')
                         days = record.get('Days')
+                        worked_days_raw = record.get('Worked Days') or record.get('Worked days') or record.get('worked_days')
                         rp = record.get('Reporting Person')
                         added_by = record.get('Added By') or record.get('added_by')
                         
@@ -663,6 +726,11 @@ def pull_from_sheets(app):
                         except ValueError:
                             sno = None
 
+                        try:
+                            w_days = int(worked_days_raw) if worked_days_raw not in ("", None) else None
+                        except (ValueError, TypeError):
+                            w_days = None
+
                         c_name_clean = str(cust_name).strip()
                         po_num_clean = str(po_num).strip() if po_num not in ("", None) else ""
                         existing_po = PO.query.filter_by(customer_name=c_name_clean, po_number=po_num_clean).first()
@@ -670,6 +738,7 @@ def pull_from_sheets(app):
                             if sno is not None: existing_po.s_no = sno
                             existing_po.zone = str(zone).strip() if zone not in ("", None) else existing_po.zone
                             existing_po.days = str(days).strip() if days not in ("", None) else existing_po.days
+                            if w_days is not None: existing_po.worked_days = w_days
                             existing_po.reporting_person = str(rp).strip() if rp not in ("", None) else existing_po.reporting_person
                             if added_by not in ("", None): existing_po.added_by = str(added_by).strip()
                         else:
@@ -679,6 +748,7 @@ def pull_from_sheets(app):
                                 zone=str(zone).strip() if zone not in ("", None) else "",
                                 po_number=po_num_clean,
                                 days=str(days).strip() if days not in ("", None) else "",
+                                worked_days=w_days,
                                 reporting_person=str(rp).strip() if rp not in ("", None) else "",
                                 added_by=str(added_by).strip() if added_by not in ("", None) else None
                             ))
@@ -803,6 +873,7 @@ def pull_from_sheets(app):
                 all_emp_ids = [e.employee_id for e in Employee.query.all()]
                 for eid in all_emp_ids:
                     recalculate_po_worked_days_local(eid)
+                recalculate_all_pos_total_worked_days()
             except Exception as e:
                 print(f"Error recalculating PO worked days during pull: {e}")
                 
@@ -818,54 +889,65 @@ def pull_from_sheets(app):
 
 def sync_tables_worker(app, tables):
     """Worker that pushes SQLite data to Google Sheets."""
-    with app.app_context():
-        client = get_gspread_client()
-        if not client:
-            return
-            
-        try:
-            spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
-        except Exception as e:
-            print(f"Error connecting to spreadsheet during sync: {e}")
-            return
-            
-        for tablename in tables:
-            if tablename == 'attendance':
-                try:
-                    worksheet = get_or_create_worksheet(spreadsheet, 'attendance', ATTENDANCE_SHEET_HEADERS)
-                    sync_attendance_to_sheet(worksheet)
-                    print("Pushed flat-row attendance to Google Sheets.")
-                except Exception as e:
-                    print(f"Error syncing attendance table to Google Sheets: {e}")
-                continue
-
-            model = TABLE_TO_MODEL.get(tablename)
-            if not model:
-                continue
+    global syncing_from_sheets
+    syncing_from_sheets = True
+    try:
+        with app.app_context():
+            client = get_gspread_client()
+            if not client:
+                return
                 
             try:
-                if tablename == 'employees':
-                    rows = model.query.filter_by(active=True).order_by(model.id).all()
-                else:
-                    rows = model.query.order_by(model.id).all()
-
-                if not rows:
-                    print(f"Safety Guard: Skipping background sync for '{tablename}' because local table has 0 rows.")
+                spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
+            except Exception as e:
+                print(f"Error connecting to spreadsheet during sync: {e}")
+                return
+                
+            # Ensure total worked days for all POs are recalculated before pushing
+            try:
+                recalculate_all_pos_total_worked_days()
+            except Exception as ex:
+                print(f"Error updating PO worked days before sync: {ex}")
+                
+            for tablename in tables:
+                if tablename == 'attendance':
+                    try:
+                        worksheet = get_or_create_worksheet(spreadsheet, 'attendance', ATTENDANCE_SHEET_HEADERS)
+                        sync_attendance_to_sheet(worksheet)
+                        print("Pushed flat-row attendance to Google Sheets.")
+                    except Exception as e:
+                        print(f"Error syncing attendance table to Google Sheets: {e}")
                     continue
 
-                headers = TABLE_HEADERS[tablename]
-                values = [headers]
-                
-                for r in rows:
-                    row_vals = get_sheet_row_vals(r, tablename, headers)
-                    values.append(row_vals)
-                
-                worksheet = get_or_create_worksheet(spreadsheet, tablename, headers)
-                worksheet.clear()
-                worksheet.update("A1", values)
-                print(f"Pushed table '{tablename}' to Google Sheets.")
-            except Exception as e:
-                print(f"Error syncing table '{tablename}' to Google Sheets: {e}")
+                model = TABLE_TO_MODEL.get(tablename)
+                if not model:
+                    continue
+                    
+                try:
+                    if tablename == 'employees':
+                        rows = model.query.filter_by(active=True).order_by(model.id).all()
+                    else:
+                        rows = model.query.order_by(model.id).all()
+
+                    if not rows:
+                        print(f"Safety Guard: Skipping background sync for '{tablename}' because local table has 0 rows.")
+                        continue
+
+                    headers = TABLE_HEADERS[tablename]
+                    values = [headers]
+                    
+                    for r in rows:
+                        row_vals = get_sheet_row_vals(r, tablename, headers)
+                        values.append(row_vals)
+                    
+                    worksheet = get_or_create_worksheet(spreadsheet, tablename, headers)
+                    worksheet.clear()
+                    worksheet.update("A1", values)
+                    print(f"Pushed table '{tablename}' to Google Sheets.")
+                except Exception as e:
+                    print(f"Error syncing table '{tablename}' to Google Sheets: {e}")
+    finally:
+        syncing_from_sheets = False
 
 
 def trigger_background_sync(tables):

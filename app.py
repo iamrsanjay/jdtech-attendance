@@ -39,7 +39,8 @@ def init_db():
         columns_to_check = [
             ("attendance", "visit_type", "VARCHAR(80)"),
             ("holidays", "description", "VARCHAR(255)"),
-            ("holidays", "added_by", "VARCHAR(120)")
+            ("holidays", "added_by", "VARCHAR(120)"),
+            ("pos", "worked_days", "INTEGER")
         ]
         for tbl, col, col_type in columns_to_check:
             try:
@@ -147,6 +148,7 @@ def calculate_time_worked(check_in, check_out):
 def recalculate_employee_po_worked_days(employee_id):
     if not employee_id:
         return
+    SITE_SUPPORT_EXCLUSION_START_DATE = date(2026, 8, 8)
     with db.session.no_autoflush:
         records = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.date.asc()).all()
         po_counts = {}
@@ -157,9 +159,10 @@ def recalculate_employee_po_worked_days(employee_id):
                     r.po_worked_days = None
                     continue
                 visit = (r.visit_type or '').strip().lower()
-                if visit in ('site support', 'site-support') or ('site' in visit and 'support' in visit):
-                    r.po_worked_days = None
-                    continue
+                if r.date and r.date >= SITE_SUPPORT_EXCLUSION_START_DATE:
+                    if visit in ('site support', 'site-support') or ('site' in visit and 'support' in visit):
+                        r.po_worked_days = None
+                        continue
                 if r.status in ['Present', 'Half Day']:
                     po_counts[po] = po_counts.get(po, 0) + 1
                     r.po_worked_days = po_counts[po]
@@ -172,6 +175,24 @@ def recalculate_employee_po_worked_days(employee_id):
             po_obj = PO.query.filter_by(po_number=po_num).first()
             if po_obj:
                 po_obj.worked_days = count
+
+        # Also recalculate total worked days for all POs across all employees (excluding Site Support from tomorrow onwards)
+        all_pos = PO.query.all()
+        for po_obj in all_pos:
+            if po_obj.po_number and po_obj.po_number.strip():
+                po_clean = po_obj.po_number.strip()
+                att_records = Attendance.query.filter(
+                    func.lower(func.trim(Attendance.po_number)) == po_clean.lower(),
+                    Attendance.status.in_(['Present', 'Half Day'])
+                ).all()
+                valid_cnt = 0
+                for ar in att_records:
+                    v = (ar.visit_type or '').strip().lower()
+                    if ar.date and ar.date >= SITE_SUPPORT_EXCLUSION_START_DATE:
+                        if v in ('site support', 'site-support') or ('site' in v and 'support' in v):
+                            continue
+                    valid_cnt += 1
+                po_obj.worked_days = valid_cnt
 
 @app.route('/')
 def index():
@@ -313,8 +334,8 @@ def my_attendance():
                             lon = parse_coordinate_str(user_lon)
                             if lat is not None and lon is not None:
                                 dist = haversine_distance(lat, lon, loc.latitude, loc.longitude)
-                                if dist > 300:
-                                    flash(f'Out of location range! You are {round(dist)} m away from {location}. (Allowed: 300 m)', 'error')
+                                if dist > 450:
+                                    flash(f'Out of location range! You are {round(dist)} m away from {location}. (Allowed: 450 m)', 'error')
                                     return redirect(url_for('my_attendance'))
                             else:
                                 flash('Could not verify GPS location. Please make sure location permissions are enabled.', 'error')
@@ -408,6 +429,7 @@ def my_attendance():
                 'zone': p.zone,
                 'po_number': p.po_number,
                 'days': p.days,
+                'worked_days': p.worked_days or 0,
                 'reporting_person': p.reporting_person
             })
             
@@ -431,21 +453,45 @@ def my_attendance():
 @login_required
 def update_work_update():
     record_id = request.form.get('record_id')
+    record_date_str = request.form.get('record_date')
     work_update_text = request.form.get('work_update', '').strip()
     employee_id = session.get('employee_id')
     
-    if not record_id or not work_update_text:
+    if not work_update_text:
         flash('Work update text cannot be empty.', 'error')
         return redirect(url_for('my_attendance'))
         
-    record = Attendance.query.filter_by(id=record_id).first()
+    record = None
+    if record_id and record_id != 'None':
+        try:
+            rec_id_int = int(record_id)
+            record = Attendance.query.get(rec_id_int)
+        except (ValueError, TypeError):
+            record = Attendance.query.filter_by(id=record_id).first()
+
+    if not record and record_date_str and employee_id:
+        try:
+            p_date = datetime.strptime(record_date_str, '%Y-%m-%d').date()
+            record = Attendance.query.filter_by(employee_id=employee_id, date=p_date).first()
+        except Exception as ex:
+            print(f"Error finding record by date fallback: {ex}")
+
     if record:
-        if session.get('role') != 'admin' and record.employee_id != employee_id:
-            flash('Unauthorized to update this attendance record.', 'error')
+        rec_emp = str(record.employee_id or '').strip()
+        sess_emp = str(employee_id or '').strip()
+        if rec_emp != sess_emp:
+            flash('Unauthorized: Only the employee can edit their own attendance record.', 'error')
             return redirect(url_for('my_attendance'))
         
         record.work_update = work_update_text
         db.session.commit()
+        
+        try:
+            from sheets_db import trigger_background_sync
+            trigger_background_sync(['attendance'])
+        except Exception:
+            pass
+
         flash(f'✅ Work update saved for {record.date.strftime("%d %b %Y")}!', 'success')
     else:
         flash('Attendance record not found.', 'error')
