@@ -273,6 +273,10 @@ def sync_attendance_to_sheet(worksheet):
             .order_by(Attendance.date.asc(), Attendance.employee_id.asc())
             .all()
         )
+        if not records:
+            print("Safety Guard: Local attendance table has 0 records. Skipping destructive Google Sheets clear/update.")
+            return
+
         values = [ATTENDANCE_SHEET_HEADERS]
         current_date = None
         for att in records:
@@ -300,9 +304,18 @@ def sync_attendance_to_sheet(worksheet):
                 att.notes or '',
                 att.work_update or ''
             ])
-        worksheet.clear()
-        worksheet.update('A1', values)
-        print(f"Successfully synced {len(records)} attendance records grouped date-wise to Google Sheets.")
+        for attempt in range(3):
+            try:
+                worksheet.clear()
+                worksheet.update('A1', values)
+                print(f"Successfully synced {len(records)} attendance records grouped date-wise to Google Sheets.")
+                break
+            except Exception as ex:
+                if attempt < 2:
+                    print(f"Sync attendance attempt {attempt + 1} failed ({ex}). Retrying in 2 seconds...")
+                    time.sleep(2)
+                else:
+                    raise ex
     except Exception as e:
         print(f"Error syncing attendance to Google Sheets: {e}")
 
@@ -332,10 +345,6 @@ def load_dotenv():
 # ── Google Sheets API Helper ─────────────────────────────────────────────────
 
 def get_gspread_client():
-    global google_auth_working
-    if not google_auth_working:
-        return None
-    
     scopes = [
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive'
@@ -351,6 +360,7 @@ def get_gspread_client():
             credentials = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_FILE, scopes=scopes)
             return gspread.authorize(credentials)
         else:
+            print("Google Sheets credentials or GOOGLE_SHEET_ID not configured.")
             return None
     except Exception as e:
         print(f"Authentication with Google API failed: {e}")
@@ -411,6 +421,10 @@ def sync_table_to_sheet(worksheet, model, headers):
     """Pushes a local SQLite table's content to the given Google Sheets worksheet."""
     try:
         rows = model.query.order_by(model.id).all()
+        if not rows:
+            print(f"Safety Guard: Local table '{model.__tablename__}' has 0 rows. Skipping Google Sheets clear/update.")
+            return
+
         values = [headers]
         for r in rows:
             row_vals = get_sheet_row_vals(r, model.__tablename__, headers)
@@ -425,23 +439,18 @@ def sync_table_to_sheet(worksheet, model, headers):
 
 def pull_from_sheets(app):
     """Fetch all records from Google Sheets and overwrite local SQLite cache."""
-    global syncing_from_sheets, google_auth_working
-    if not google_auth_working:
-        return
+    global syncing_from_sheets
     
     client = get_gspread_client()
     if not client:
         print("Google Sheets credentials not configured or spreadsheet ID missing. Skipping pull.")
-        return
+        return False, "Google Sheets credentials not configured or spreadsheet ID missing."
         
     try:
         spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
     except Exception as e:
         print(f"Error opening spreadsheet '{GOOGLE_SHEET_ID}': {e}. Skipping pull.")
-        if "invalid_grant" in str(e) or "auth" in str(e).lower() or "credentials" in str(e).lower():
-            print("Permanent Google Sheets authentication error detected. Disabling Sheets sync for this session.")
-            google_auth_working = False
-        return
+        return False, f"Error opening spreadsheet: {e}"
         
     print("Synchronizing data from Google Sheets to local database...")
     syncing_from_sheets = True
@@ -463,10 +472,8 @@ def pull_from_sheets(app):
                         print(f"Error reading worksheet 'attendance': {e}")
                         continue
 
-                    # Always clear local attendance cache so SQLite reflects Google Sheets edits/deletions 100%
-                    db.session.query(Attendance).delete()
-
                     if not records:
+                        print("Safety Guard: Google Sheets 'attendance' tab returned 0 records. Preserving local SQLite cache.")
                         continue
 
                     # Detect format: date-wise, flat rows, or legacy day-wise
@@ -498,26 +505,43 @@ def pull_from_sheets(app):
 
                             check_in  = str(record.get('Clock In') or '').strip() or None
                             check_out = str(record.get('Clock Out') or '').strip() or None
-                            db.session.add(Attendance(
-                                employee_id=emp_id,
-                                date=date_obj,
-                                status=str(record.get('Status') or 'Present').strip(),
-                                check_in=check_in,
-                                check_out=check_out,
-                                time_worked=str(record.get('Time In Plant') or '').strip() or calculate_time_worked(check_in, check_out),
-                                location=str(record.get('Location') or '').strip() or None,
-                                zone=str(record.get('Zone') or '').strip() or None,
-                                po_number=str(record.get('PO Number') or '').strip() or None,
-                                reporting_person=str(record.get('Reporting Person') or '').strip() or None,
-                                po_worked_days=int(str(record.get('Days on PO') or record.get('po_worked_days') or '').strip()) if (str(record.get('Days on PO') or record.get('po_worked_days') or '').strip()).isdigit() else None,
-                                notes=str(record.get('Notes') or '').strip() or None,
-                                work_update=str(record.get('Work Update') or '').strip() or None,
-                                marked_by='Google Sheets Sync'
-                            ))
+                            
+                            existing = Attendance.query.filter_by(employee_id=emp_id, date=date_obj).first()
+                            if existing:
+                                existing.status = str(record.get('Status') or 'Present').strip()
+                                existing.check_in = check_in or existing.check_in
+                                existing.check_out = check_out or existing.check_out
+                                existing.time_worked = str(record.get('Time In Plant') or '').strip() or calculate_time_worked(existing.check_in, existing.check_out)
+                                existing.location = str(record.get('Location') or '').strip() or existing.location
+                                existing.zone = str(record.get('Zone') or '').strip() or existing.zone
+                                existing.po_number = str(record.get('PO Number') or '').strip() or existing.po_number
+                                existing.reporting_person = str(record.get('Reporting Person') or '').strip() or existing.reporting_person
+                                if (str(record.get('Days on PO') or record.get('po_worked_days') or '').strip()).isdigit():
+                                    existing.po_worked_days = int(str(record.get('Days on PO') or record.get('po_worked_days') or '').strip())
+                                if str(record.get('Notes') or '').strip():
+                                    existing.notes = str(record.get('Notes') or '').strip()
+                                if str(record.get('Work Update') or '').strip():
+                                    existing.work_update = str(record.get('Work Update') or '').strip()
+                            else:
+                                db.session.add(Attendance(
+                                    employee_id=emp_id,
+                                    date=date_obj,
+                                    status=str(record.get('Status') or 'Present').strip(),
+                                    check_in=check_in,
+                                    check_out=check_out,
+                                    time_worked=str(record.get('Time In Plant') or '').strip() or calculate_time_worked(check_in, check_out),
+                                    location=str(record.get('Location') or '').strip() or None,
+                                    zone=str(record.get('Zone') or '').strip() or None,
+                                    po_number=str(record.get('PO Number') or '').strip() or None,
+                                    reporting_person=str(record.get('Reporting Person') or '').strip() or None,
+                                    po_worked_days=int(str(record.get('Days on PO') or record.get('po_worked_days') or '').strip()) if (str(record.get('Days on PO') or record.get('po_worked_days') or '').strip()).isdigit() else None,
+                                    notes=str(record.get('Notes') or '').strip() or None,
+                                    work_update=str(record.get('Work Update') or '').strip() or None,
+                                    marked_by='Google Sheets Sync'
+                                ))
                         continue
                     else:
                         # Legacy day-wise format: convert to flat
-                        db.session.query(Attendance).delete()
                         for record in records:
                             emp_id = str(record.get('Employee ID') or record.get('employee_id') or '').strip()
                             if not emp_id:
@@ -535,20 +559,32 @@ def pull_from_sheets(app):
                                     if details:
                                         check_in  = details['check_in']
                                         check_out = details['check_out']
-                                        db.session.add(Attendance(
-                                            employee_id=emp_id,
-                                            date=date_obj,
-                                            status=details['status'],
-                                            check_in=check_in,
-                                            check_out=check_out,
-                                            time_worked=calculate_time_worked(check_in, check_out),
-                                            location=details['location'],
-                                            po_number=details['po_number'],
-                                            zone=details['zone'],
-                                            reporting_person=details['reporting_person'],
-                                            notes=details['notes'],
-                                            marked_by='Google Sheets Sync'
-                                        ))
+                                        existing = Attendance.query.filter_by(employee_id=emp_id, date=date_obj).first()
+                                        if existing:
+                                            existing.status = details['status']
+                                            existing.check_in = check_in or existing.check_in
+                                            existing.check_out = check_out or existing.check_out
+                                            existing.time_worked = calculate_time_worked(existing.check_in, existing.check_out)
+                                            existing.location = details['location'] or existing.location
+                                            existing.po_number = details['po_number'] or existing.po_number
+                                            existing.zone = details['zone'] or existing.zone
+                                            existing.reporting_person = details['reporting_person'] or existing.reporting_person
+                                            existing.notes = details['notes'] or existing.notes
+                                        else:
+                                            db.session.add(Attendance(
+                                                employee_id=emp_id,
+                                                date=date_obj,
+                                                status=details['status'],
+                                                check_in=check_in,
+                                                check_out=check_out,
+                                                time_worked=calculate_time_worked(check_in, check_out),
+                                                location=details['location'],
+                                                po_number=details['po_number'],
+                                                zone=details['zone'],
+                                                reporting_person=details['reporting_person'],
+                                                notes=details['notes'],
+                                                marked_by='Google Sheets Sync'
+                                            ))
                     continue
 
                 try:
@@ -564,13 +600,11 @@ def pull_from_sheets(app):
                     print(f"Error reading worksheet '{tablename}': {e}")
                     continue
                 
-                # Always clear local table so SQLite matches Google Sheets 100%
-                db.session.query(model).delete()
-                
                 if not records:
+                    print(f"Safety Guard: Google Sheets '{tablename}' worksheet returned 0 records. Preserving local SQLite cache.")
                     continue
-                
-                # Insert rows
+
+                # Insert or update rows (UPSERT)
                 if tablename == 'locations':
                     for record in records:
                         cust_id = record.get('Customer ID')
@@ -592,15 +626,25 @@ def pull_from_sheets(app):
                         lat = parse_coordinate_str(latitude)
                         lon = parse_coordinate_str(longitude)
 
-                        db.session.add(Location(
-                            customer_id=c_id,
-                            customer_name=str(cust_name).strip(),
-                            zone=str(zone).strip() if zone not in ("", None) else "",
-                            latitude=lat,
-                            longitude=lon,
-                            created_at=str(created_at).strip() if created_at not in ("", None) else "",
-                            added_by=str(added_by).strip() if added_by not in ("", None) else None
-                        ))
+                        c_name_clean = str(cust_name).strip()
+                        existing_loc = Location.query.filter_by(customer_name=c_name_clean).first()
+                        if existing_loc:
+                            if c_id is not None: existing_loc.customer_id = c_id
+                            existing_loc.zone = str(zone).strip() if zone not in ("", None) else existing_loc.zone
+                            if lat is not None: existing_loc.latitude = lat
+                            if lon is not None: existing_loc.longitude = lon
+                            if created_at not in ("", None): existing_loc.created_at = str(created_at).strip()
+                            if added_by not in ("", None): existing_loc.added_by = str(added_by).strip()
+                        else:
+                            db.session.add(Location(
+                                customer_id=c_id,
+                                customer_name=c_name_clean,
+                                zone=str(zone).strip() if zone not in ("", None) else "",
+                                latitude=lat,
+                                longitude=lon,
+                                created_at=str(created_at).strip() if created_at not in ("", None) else "",
+                                added_by=str(added_by).strip() if added_by not in ("", None) else None
+                            ))
                 elif tablename == 'pos':
                     for record in records:
                         s_no = record.get('S.no')
@@ -619,15 +663,25 @@ def pull_from_sheets(app):
                         except ValueError:
                             sno = None
 
-                        db.session.add(PO(
-                            s_no=sno,
-                            customer_name=str(cust_name).strip(),
-                            zone=str(zone).strip() if zone not in ("", None) else "",
-                            po_number=str(po_num).strip() if po_num not in ("", None) else "",
-                            days=str(days).strip() if days not in ("", None) else "",
-                            reporting_person=str(rp).strip() if rp not in ("", None) else "",
-                            added_by=str(added_by).strip() if added_by not in ("", None) else None
-                        ))
+                        c_name_clean = str(cust_name).strip()
+                        po_num_clean = str(po_num).strip() if po_num not in ("", None) else ""
+                        existing_po = PO.query.filter_by(customer_name=c_name_clean, po_number=po_num_clean).first()
+                        if existing_po:
+                            if sno is not None: existing_po.s_no = sno
+                            existing_po.zone = str(zone).strip() if zone not in ("", None) else existing_po.zone
+                            existing_po.days = str(days).strip() if days not in ("", None) else existing_po.days
+                            existing_po.reporting_person = str(rp).strip() if rp not in ("", None) else existing_po.reporting_person
+                            if added_by not in ("", None): existing_po.added_by = str(added_by).strip()
+                        else:
+                            db.session.add(PO(
+                                s_no=sno,
+                                customer_name=c_name_clean,
+                                zone=str(zone).strip() if zone not in ("", None) else "",
+                                po_number=po_num_clean,
+                                days=str(days).strip() if days not in ("", None) else "",
+                                reporting_person=str(rp).strip() if rp not in ("", None) else "",
+                                added_by=str(added_by).strip() if added_by not in ("", None) else None
+                            ))
                 elif tablename == 'holidays':
                     for record in records:
                         rec_clean = {str(k).strip().lower(): v for k, v in record.items()}
@@ -640,12 +694,18 @@ def pull_from_sheets(app):
                         if not h_date or not h_name:
                             continue
 
-                        db.session.add(Holiday(
-                            date=h_date,
-                            name=str(h_name).strip(),
-                            description=str(h_desc).strip() if h_desc not in ("", None) else None,
-                            added_by=str(h_added_by).strip() if h_added_by not in ("", None) else None
-                        ))
+                        existing_h = Holiday.query.filter_by(date=h_date).first()
+                        if existing_h:
+                            existing_h.name = str(h_name).strip()
+                            if h_desc not in ("", None): existing_h.description = str(h_desc).strip()
+                            if h_added_by not in ("", None): existing_h.added_by = str(h_added_by).strip()
+                        else:
+                            db.session.add(Holiday(
+                                date=h_date,
+                                name=str(h_name).strip(),
+                                description=str(h_desc).strip() if h_desc not in ("", None) else None,
+                                added_by=str(h_added_by).strip() if h_added_by not in ("", None) else None
+                            ))
                 elif tablename == 'employees':
                     seen_emp_ids = set()
                     for record in records:
@@ -660,8 +720,6 @@ def pull_from_sheets(app):
                         dept = str(rec_clean.get('department') or rec_clean.get('dept') or '').strip()
                         role = str(rec_clean.get('role') or 'employee').strip().lower()
                         pw = str(rec_clean.get('password') or '').strip()
-                        if not pw:
-                            pw = hashlib.sha256(emp_id.encode()).hexdigest()
 
                         pos_title = str(rec_clean.get('position') or rec_clean.get('designation') or '').strip() or None
                         email = str(rec_clean.get('email') or '').strip() or None
@@ -676,22 +734,35 @@ def pull_from_sheets(app):
 
                         active_raw = str(rec_clean.get('active') or 'true').strip().lower()
                         is_active = active_raw not in ('false', '0', 'no', 'disabled')
-                        if not is_active:
-                            continue
 
-                        db.session.add(Employee(
-                            employee_id=emp_id,
-                            password=pw,
-                            role=role,
-                            full_name=full_name,
-                            department=dept,
-                            position=pos_title,
-                            email=email,
-                            phone=phone,
-                            join_date=jd,
-                            active=is_active,
-                            reporting_to=reporting_to
-                        ))
+                        existing_emp = Employee.query.filter_by(employee_id=emp_id).first()
+                        if existing_emp:
+                            if full_name: existing_emp.full_name = full_name
+                            if dept: existing_emp.department = dept
+                            if role: existing_emp.role = role
+                            if pw: existing_emp.password = pw
+                            if pos_title: existing_emp.position = pos_title
+                            if email: existing_emp.email = email
+                            if phone: existing_emp.phone = phone
+                            if reporting_to: existing_emp.reporting_to = reporting_to
+                            if jd: existing_emp.join_date = jd
+                            existing_emp.active = is_active
+                        else:
+                            if not pw:
+                                pw = hashlib.sha256(emp_id.encode()).hexdigest()
+                            db.session.add(Employee(
+                                employee_id=emp_id,
+                                password=pw,
+                                role=role,
+                                full_name=full_name,
+                                department=dept,
+                                position=pos_title,
+                                email=email,
+                                phone=phone,
+                                join_date=jd,
+                                active=is_active,
+                                reporting_to=reporting_to
+                            ))
                 else:
                     for record in records:
                         kwargs = {}
@@ -737,18 +808,16 @@ def pull_from_sheets(app):
                 
             db.session.commit()
             print("Successfully synchronized data from Google Sheets.")
+            return True, "Successfully synchronized data from Google Sheets."
         except Exception as e:
             db.session.rollback()
             print(f"Error writing pulled data to SQLite: {e}")
+            return False, f"Error writing pulled data to SQLite: {e}"
         finally:
             syncing_from_sheets = False
 
 def sync_tables_worker(app, tables):
-    """Background worker that pushes SQLite data to Google Sheets."""
-    global google_auth_working
-    if not google_auth_working:
-        return
-        
+    """Worker that pushes SQLite data to Google Sheets."""
     with app.app_context():
         client = get_gspread_client()
         if not client:
@@ -757,10 +826,7 @@ def sync_tables_worker(app, tables):
         try:
             spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
         except Exception as e:
-            print(f"Error connecting to spreadsheet during background sync: {e}")
-            if "invalid_grant" in str(e) or "auth" in str(e).lower() or "credentials" in str(e).lower():
-                print("Permanent Google Sheets authentication error detected. Disabling Sheets sync for this session.")
-                google_auth_working = False
+            print(f"Error connecting to spreadsheet during sync: {e}")
             return
             
         for tablename in tables:
@@ -782,6 +848,11 @@ def sync_tables_worker(app, tables):
                     rows = model.query.filter_by(active=True).order_by(model.id).all()
                 else:
                     rows = model.query.order_by(model.id).all()
+
+                if not rows:
+                    print(f"Safety Guard: Skipping background sync for '{tablename}' because local table has 0 rows.")
+                    continue
+
                 headers = TABLE_HEADERS[tablename]
                 values = [headers]
                 
@@ -803,6 +874,24 @@ def trigger_background_sync(tables):
     thread = threading.Thread(target=sync_tables_worker, args=(app, list(tables)))
     thread.daemon = True
     thread.start()
+
+def sync_bidirectional(app):
+    """
+    Performs full two-way synchronization:
+    1. Pulls latest updates & deletions from Google Sheets into local SQLite database.
+    2. Pushes local tables (attendance, employees, locations, pos, holidays) to Google Sheets.
+    Returns (success_boolean, message_string).
+    """
+    pull_success, pull_msg = pull_from_sheets(app)
+    if not pull_success:
+        print(f"Sync pull warning: {pull_msg}")
+
+    try:
+        all_tables = ['employees', 'attendance', 'locations', 'pos', 'holidays']
+        sync_tables_worker(app, all_tables)
+        return True, "Successfully synchronized both ways with Google Sheets!"
+    except Exception as e:
+        return False, f"Error pushing data to Google Sheets: {e}"
 
 # ── Event Listeners ──────────────────────────────────────────────────────────
 

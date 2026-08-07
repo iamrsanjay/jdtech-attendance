@@ -816,6 +816,10 @@
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
         {% block topbar_actions %}{% endblock %}
+        <a href="{{ url_for('sync_from_sheets_route') }}" class="btn btn-sm" style="background:var(--accent); color:#ffffff; white-space:nowrap; font-weight:600;"
+          title="Sync latest data bi-directionally with Google Sheets">
+          🔄 Sync Sheets
+        </a>
         <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm" style="white-space:nowrap; font-weight:700;"
           title="Sign out of system">
           🚪 Sign out

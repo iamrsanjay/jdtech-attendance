@@ -14,7 +14,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from sheets_db import db, configure_app, pull_from_sheets, trigger_background_sync, Employee, Attendance, Location, PO, Holiday, parse_coordinate_str
+from sheets_db import db, configure_app, pull_from_sheets, sync_bidirectional, trigger_background_sync, Employee, Attendance, Location, PO, Holiday, parse_coordinate_str
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'attendance_secret_key_2024')
@@ -1489,15 +1489,17 @@ def admin_holidays():
     holidays = Holiday.query.order_by(Holiday.date.asc()).all()
     return render_template('admin_holidays.html', holidays=holidays)
 
-@app.route('/sync-from-sheets')
+@app.route('/sync-from-sheets', methods=['GET', 'POST'])
 @login_required
-@admin_required
 def sync_from_sheets_route():
     try:
-        pull_from_sheets(app)
-        flash('🔄 Successfully synchronized latest data & deletions from Google Sheets!', 'success')
+        success, msg = sync_bidirectional(app)
+        if success:
+            flash('🔄 Successfully synchronized latest data with Google Sheets!', 'success')
+        else:
+            flash(f'⚠️ Sync warning: {msg}', 'error')
     except Exception as e:
-        flash(f'Error syncing from Google Sheets: {e}', 'error')
+        flash(f'Error syncing with Google Sheets: {e}', 'error')
     return redirect(request.referrer or url_for('my_attendance'))
 
 if __name__ == '__main__':
