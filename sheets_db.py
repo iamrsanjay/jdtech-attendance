@@ -19,9 +19,29 @@ from google.oauth2.service_account import Credentials
 
 db = SQLAlchemy()
 
+# ── Local .env Parser ────────────────────────────────────────────────────────
+
+def load_dotenv():
+    env_path = '.env'
+    if os.path.exists(env_path):
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    key, val = line.split('=', 1)
+                    key = key.strip()
+                    val = val.strip()
+                    if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                        val = val[1:-1]
+                    os.environ[key] = val
+
+load_dotenv()
+
 # ── Configuration Variables ──────────────────────────────────────────────────
-GOOGLE_SHEET_ID = None
-GOOGLE_SERVICE_ACCOUNT_FILE = None
+GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID')
+GOOGLE_SERVICE_ACCOUNT_FILE = os.environ.get('GOOGLE_SERVICE_ACCOUNT_FILE', 'credentials.json')
 syncing_from_sheets = False
 modified_tables = set()
 google_auth_working = True
@@ -65,6 +85,7 @@ class Attendance(db.Model):
     time_worked      = db.Column(db.String(20), nullable=True)
     work_update      = db.Column(db.Text, nullable=True)
     visit_type       = db.Column(db.String(80), nullable=True)
+    distance         = db.Column(db.String(50), nullable=True)
 
 class Location(db.Model):
     __tablename__ = 'locations'
@@ -321,7 +342,7 @@ def recalculate_all_pos_total_worked_days():
 
 ATTENDANCE_SHEET_HEADERS = [
     'Employee ID', 'Full Name', 'Department', 'Status',
-    'Clock In', 'Clock Out', 'Time In Plant', 'Location', 'Zone',
+    'Clock In', 'Clock Out', 'Time In Plant', 'Location', 'Distance', 'Zone',
     'PO Number', 'Reporting Person', 'Days on PO', 'Notes', 'Work Update'
 ]
 
@@ -358,6 +379,7 @@ def sync_attendance_to_sheet(worksheet):
                 att.check_out or '',
                 att.time_worked or '',
                 att.location or '',
+                att.distance or '',
                 att.zone or '',
                 att.po_number or '',
                 att.reporting_person or '',
@@ -411,14 +433,16 @@ def get_gspread_client():
         'https://www.googleapis.com/auth/drive'
     ]
     try:
+        sheet_id = GOOGLE_SHEET_ID or os.environ.get('GOOGLE_SHEET_ID')
+        svc_file = GOOGLE_SERVICE_ACCOUNT_FILE or os.environ.get('GOOGLE_SERVICE_ACCOUNT_FILE', 'credentials.json')
         creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON') or os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON') or os.environ.get('GOOGLE_CREDENTIALS')
         if creds_json and creds_json.strip():
             import json
             info = json.loads(creds_json.strip())
             credentials = Credentials.from_service_account_info(info, scopes=scopes)
             return gspread.authorize(credentials)
-        elif GOOGLE_SHEET_ID and os.path.exists(GOOGLE_SERVICE_ACCOUNT_FILE):
-            credentials = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_FILE, scopes=scopes)
+        elif sheet_id and os.path.exists(svc_file):
+            credentials = Credentials.from_service_account_file(svc_file, scopes=scopes)
             return gspread.authorize(credentials)
         else:
             print("Google Sheets credentials or GOOGLE_SHEET_ID not configured.")
@@ -952,10 +976,24 @@ def sync_tables_worker(app, tables):
 
 def trigger_background_sync(tables):
     from flask import current_app
-    app = current_app._get_current_object()
-    thread = threading.Thread(target=sync_tables_worker, args=(app, list(tables)))
-    thread.daemon = True
-    thread.start()
+    try:
+        app = current_app._get_current_object()
+    except Exception:
+        app = None
+
+    if not app:
+        return
+
+    # On serverless or cloud hosts, sync inline so Flask doesn't kill the thread before pushing to Sheets
+    if os.environ.get('VERCEL') or os.environ.get('RENDER') or os.environ.get('RAILWAY') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+        try:
+            sync_tables_worker(app, list(tables))
+        except Exception as e:
+            print(f"Error during inline sync to Google Sheets: {e}")
+    else:
+        thread = threading.Thread(target=sync_tables_worker, args=(app, list(tables)))
+        thread.daemon = False
+        thread.start()
 
 def sync_bidirectional(app):
     """
@@ -990,7 +1028,8 @@ def after_flush(session, flush_context):
 @event.listens_for(db.session, 'after_commit')
 def after_commit(session):
     global syncing_from_sheets, modified_tables
-    if syncing_from_sheets or not GOOGLE_SHEET_ID:
+    sheet_id = GOOGLE_SHEET_ID or os.environ.get('GOOGLE_SHEET_ID')
+    if syncing_from_sheets or not sheet_id:
         modified_tables.clear()
         return
         

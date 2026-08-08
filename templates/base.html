@@ -772,6 +772,10 @@
         class="nav-item {% if request.endpoint=='my_attendance' %}active{% endif %}">
         <span class="icon">🕒</span> My Attendance
       </a>
+      <a href="{{ url_for('admin_holidays') }}"
+        class="nav-item {% if request.endpoint=='admin_holidays' %}active{% endif %}">
+        <span class="icon">🎉</span> Company Holidays
+      </a>
       <a href="{{ url_for('change_password') }}"
         class="nav-item {% if request.endpoint=='change_password' %}active{% endif %}">
         <span class="icon">🔑</span> Change Password
@@ -785,10 +789,6 @@
       <a href="{{ url_for('admin_office_locations') }}"
         class="nav-item {% if request.endpoint=='admin_office_locations' %}active{% endif %}">
         <span class="icon">📍</span> Site Locations
-      </a>
-      <a href="{{ url_for('admin_holidays') }}"
-        class="nav-item {% if request.endpoint=='admin_holidays' %}active{% endif %}">
-        <span class="icon">🎉</span> Company Holidays
       </a>
       {% endif %}
     </nav>

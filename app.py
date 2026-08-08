@@ -38,6 +38,7 @@ def init_db():
         # Safely migrate any missing columns in existing SQLite tables
         columns_to_check = [
             ("attendance", "visit_type", "VARCHAR(80)"),
+            ("attendance", "distance", "VARCHAR(50)"),
             ("holidays", "description", "VARCHAR(255)"),
             ("holidays", "added_by", "VARCHAR(120)"),
             ("pos", "worked_days", "INTEGER")
@@ -239,6 +240,7 @@ def attendance_entry():
 def my_attendance():
     try:
         employee_id = session.get('employee_id')
+        is_user_2023002 = (str(employee_id).strip() == '2023002') if employee_id else False
         employee    = None
         records     = []
         today       = date.today()
@@ -248,7 +250,7 @@ def my_attendance():
             employee = Employee.query.filter_by(employee_id=employee_id).first()
 
         pending_work_update_record = None
-        if employee_id:
+        if employee_id and not is_user_2023002:
             past_records = Attendance.query.filter(
                 Attendance.employee_id == employee_id,
                 Attendance.date < today,
@@ -286,6 +288,7 @@ def my_attendance():
                         
                         recalculate_employee_po_worked_days(employee_id)
                         db.session.commit()
+                        trigger_background_sync(['attendance', 'pos'])
                         flash(f'✅ Clock Out recorded successfully at {now_time}!', 'success')
                 else:
                     flash('No check-in record found for today!', 'error')
@@ -304,11 +307,14 @@ def my_attendance():
                 notes            = request.form.get('notes', '').strip()
                 work_update      = request.form.get('work_update', '').strip()
 
-                if pending_work_update_record and status in ['Present', 'Half Day']:
+                if pending_work_update_record and status in ['Present', 'Half Day'] and not is_user_2023002:
                     flash(f'⚠️ Work update for {pending_work_update_record.date.strftime("%d %b %Y")} is missing! Please submit your work update for that day before clocking in.', 'error')
                     return redirect(url_for('my_attendance'))
 
-                if status == 'Absent':
+                if is_user_2023002:
+                    # Skip location checking completely for user 2023002
+                    pass
+                elif status == 'Absent':
                     location         = ''
                     po_number        = ''
                     reporting_person = ''
@@ -334,14 +340,23 @@ def my_attendance():
                             lon = parse_coordinate_str(user_lon)
                             if lat is not None and lon is not None:
                                 dist = haversine_distance(lat, lon, loc.latitude, loc.longitude)
-                                if dist > 450:
-                                    flash(f'Out of location range! You are {round(dist)} m away from {location}. (Allowed: 450 m)', 'error')
+                                if dist >= 2000:
+                                    flash(f'Out of location range! You are {round(dist)} m away from {location}. (Maximum allowed: 2000 m)', 'error')
                                     return redirect(url_for('my_attendance'))
                             else:
                                 flash('Could not verify GPS location. Please make sure location permissions are enabled.', 'error')
                                 return redirect(url_for('my_attendance'))
 
                 now_time = datetime.now().strftime('%H:%M')
+                user_distance_val = request.form.get('user_distance', '').strip()
+                if not user_distance_val and status != 'Absent' and location:
+                    loc_obj_calc = Location.query.filter_by(customer_name=location).first()
+                    if loc_obj_calc and loc_obj_calc.latitude and loc_obj_calc.longitude:
+                        lat_val = parse_coordinate_str(request.form.get('user_lat'))
+                        lon_val = parse_coordinate_str(request.form.get('user_lon'))
+                        if lat_val is not None and lon_val is not None:
+                            c_dist = haversine_distance(lat_val, lon_val, loc_obj_calc.latitude, loc_obj_calc.longitude)
+                            user_distance_val = f"{round(c_dist)} m"
 
                 if po_number:
                     existing_po = PO.query.filter_by(po_number=po_number).first()
@@ -364,6 +379,7 @@ def my_attendance():
                     status=status,
                     check_in=now_time,
                     location=location,
+                    distance=user_distance_val,
                     po_number=po_number,
                     visit_type=visit_type,
                     reporting_person=reporting_person,
@@ -374,6 +390,7 @@ def my_attendance():
                 ))
                 recalculate_employee_po_worked_days(employee_id)
                 db.session.commit()
+                trigger_background_sync(['attendance', 'pos'])
                 flash('✅ Attendance recorded successfully!', 'success')
             return redirect(url_for('my_attendance'))
 
@@ -434,7 +451,7 @@ def my_attendance():
             })
             
         reporting_persons = []
-        location_checking_enabled = any(loc['gps_enabled'] for loc in locations)
+        location_checking_enabled = (any(loc['gps_enabled'] for loc in locations)) if not is_user_2023002 else False
 
         return render_template('my_attendance.html',
             employee=employee, records=records, today=today.isoformat(),
@@ -465,7 +482,7 @@ def update_work_update():
     if record_id and record_id != 'None':
         try:
             rec_id_int = int(record_id)
-            record = Attendance.query.get(rec_id_int)
+            record = db.session.get(Attendance, rec_id_int)
         except (ValueError, TypeError):
             record = Attendance.query.filter_by(id=record_id).first()
 
@@ -674,6 +691,7 @@ def mark_attendance():
         for emp_id in modified_emp_ids:
             recalculate_employee_po_worked_days(emp_id)
         db.session.commit()
+        trigger_background_sync(['attendance', 'pos'])
         flash(f'Attendance saved for {updated} employees on {sel_date}.', 'success')
         return redirect(url_for('mark_attendance'))
 
@@ -1258,6 +1276,8 @@ def haversine_distance(lat1, lon1, lat2, lon2):
 @login_required
 def verify_location():
     """Check if the given GPS coords fall within approved location radius."""
+    if str(session.get('employee_id')).strip() == '2023002':
+        return jsonify({'allowed': True, 'bypass': True})
     data = request.get_json()
     if not data or 'latitude' not in data or 'longitude' not in data:
         return jsonify({'allowed': False, 'error': 'Missing coordinates'}), 400
@@ -1371,7 +1391,7 @@ def admin_office_locations():
 
         elif action == 'delete':
             loc_id = request.form.get('location_id')
-            loc = Location.query.get(loc_id)
+            loc = db.session.get(Location, loc_id)
             if loc:
                 name = loc.customer_name
                 # Delete all POs for this customer name
@@ -1383,7 +1403,7 @@ def admin_office_locations():
 
         elif action == 'toggle':
             loc_id = request.form.get('location_id')
-            loc = Location.query.get(loc_id)
+            loc = db.session.get(Location, loc_id)
             if loc:
                 if loc.latitude or loc.longitude:
                     # Clear coords to disable GPS
@@ -1396,7 +1416,7 @@ def admin_office_locations():
 
         elif action == 'edit':
             loc_id = request.form.get('location_id')
-            loc = Location.query.get(loc_id)
+            loc = db.session.get(Location, loc_id)
             if loc:
                 try:
                     old_name = loc.customer_name
@@ -1428,7 +1448,7 @@ def admin_office_locations():
                 days   = request.form.get('days_needed', '').strip()
                 rp     = request.form.get('reporting_person', '').strip()
                 
-                base_loc = Location.query.get(loc_id)
+                base_loc = db.session.get(Location, loc_id)
                 if base_loc and po_num and zone:
                     max_sno = db.session.query(func.max(PO.s_no)).scalar() or 0
                     db.session.add(PO(
@@ -1449,7 +1469,7 @@ def admin_office_locations():
 
         elif action == 'delete_po':
             po_id = request.form.get('po_id')
-            po_row = PO.query.get(po_id)
+            po_row = db.session.get(PO, po_id)
             if po_row:
                 number = po_row.po_number
                 db.session.delete(po_row)
@@ -1484,14 +1504,14 @@ def admin_office_locations():
         })
     return render_template('admin_office_locations.html', branches=branches)
 
+@app.route('/holidays', methods=['GET', 'POST'])
 @app.route('/admin/holidays', methods=['GET', 'POST'])
 @login_required
 def admin_holidays():
-    if session.get('role') != 'admin':
-        flash('🚫 Admin access required.', 'error')
-        return redirect(url_for('dashboard'))
-
     if request.method == 'POST':
+        if session.get('role') != 'admin':
+            flash('🚫 Only admins can add or delete holidays.', 'error')
+            return redirect(url_for('admin_holidays'))
         action = request.form.get('action')
         if action == 'add':
             h_date_str = request.form.get('date')
@@ -1522,7 +1542,7 @@ def admin_holidays():
 
         elif action == 'delete':
             hid = request.form.get('holiday_id')
-            hol = Holiday.query.get(hid)
+            hol = db.session.get(Holiday, hid)
             if hol:
                 name = hol.name
                 db.session.delete(hol)

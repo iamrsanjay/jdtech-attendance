@@ -154,6 +154,7 @@ function toggleFilterType(val) {
           <th>PO Number</th>
           <th>Visit Type</th>
           <th>Location</th>
+          <th>Distance</th>
           <th>Status</th>
         </tr>
       </thead>
@@ -194,6 +195,7 @@ function toggleFilterType(val) {
               </span>
             </td>
             <td style="font-size:12px; color:var(--muted);">{{ r.location or '—' }}</td>
+            <td style="font-size:12px; font-weight:600; color:var(--text);">{{ r.distance or '—' }}</td>
             <td>
               {% if r.status == 'Present' %}
                 <span class="badge badge-present">Present</span>

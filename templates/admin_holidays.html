@@ -1,9 +1,10 @@
 {% extends 'base.html' %}
 {% block title %}Company Holidays — JD TECH{% endblock %}
 {% block page_title %}Company Holidays{% endblock %}
-{% block page_subtitle %}Manage official company holidays and leave dates{% endblock %}
+{% block page_subtitle %}Official company holidays and leave calendar{% endblock %}
 
 {% block content %}
+{% if session.get('role') == 'admin' %}
 <div class="grid grid-2" style="margin-bottom: 24px; align-items: start;">
   <!-- Add New Holiday Form -->
   <div class="card">
@@ -51,6 +52,7 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 <!-- Holiday Listing Table -->
 <div class="card">
@@ -64,9 +66,9 @@
           <th>Date</th>
           <th>Day</th>
           <th>Holiday Name</th>
-          <th>Description</th>
-          <th>Added By</th>
+          {% if session.get('role') == 'admin' %}
           <th>Action</th>
+          {% endif %}
         </tr>
       </thead>
       <tbody>
@@ -84,12 +86,7 @@
             <td>
               <strong style="color:var(--accent);">🎉 {{ h.name }}</strong>
             </td>
-            <td style="color:var(--muted); font-size:13px;">
-              {{ h.description or '—' }}
-            </td>
-            <td style="color:var(--muted); font-size:12px;">
-              {{ h.added_by or 'Admin' }}
-            </td>
+            {% if session.get('role') == 'admin' %}
             <td>
               <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this holiday?');">
                 <input type="hidden" name="action" value="delete">
@@ -97,15 +94,16 @@
                 <button type="submit" class="btn btn-danger btn-sm" style="padding:4px 10px;">🗑️ Delete</button>
               </form>
             </td>
+            {% endif %}
           </tr>
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="6">
+            <td colspan="{% if session.get('role') == 'admin' %}4{% else %}3{% endif %}">
               <div style="text-align:center; padding:40px 20px; color:var(--muted);">
                 <div style="font-size:40px; margin-bottom:12px;">🎉</div>
                 <h4 style="font-size:16px; font-weight:700; color:var(--text); margin-bottom:4px;">No Company Holidays Added Yet</h4>
-                <p style="font-size:13px; margin:0;">Use the form above to add official holidays to the calendar.</p>
+                <p style="font-size:13px; margin:0;">Official holidays scheduled for the company will appear here.</p>
               </div>
             </td>
           </tr>
